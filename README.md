@@ -1,6 +1,7 @@
 # ri : run it right
 
 `ri` runs the right task runner for the project.
+Inspired by [antfu/ni](https://github.com/antfu/ni).
 
 ## What it does
 

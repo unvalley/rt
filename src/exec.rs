@@ -1,21 +1,21 @@
 use std::process::Command;
 
 use crate::detect::{Runner, runner_command};
-use crate::error::RiError;
+use crate::error::RtError;
 
-pub fn run(runner: Runner, task: &str, passthrough: &[String]) -> Result<i32, RiError> {
+pub fn run(runner: Runner, task: &str, passthrough: &[String]) -> Result<i32, RtError> {
     let program = runner_command(runner);
     ensure_tool(program)?;
 
     let mut command = make_command(runner);
 
-    let current_dir = std::env::current_dir().map_err(RiError::Io)?;
+    let current_dir = std::env::current_dir().map_err(RtError::Io)?;
     let status = command
         .arg(task)
         .args(passthrough)
         .current_dir(current_dir)
         .status()
-        .map_err(RiError::Spawn)?;
+        .map_err(RtError::Spawn)?;
 
     Ok(status.code().unwrap_or(2))
 }
@@ -29,9 +29,9 @@ fn make_command(runner: Runner) -> Command {
     command
 }
 
-fn ensure_tool(tool: &'static str) -> Result<(), RiError> {
+fn ensure_tool(tool: &'static str) -> Result<(), RtError> {
     match which::which(tool) {
         Ok(_) => Ok(()),
-        Err(_) => Err(RiError::ToolMissing { tool }),
+        Err(_) => Err(RtError::ToolMissing { tool }),
     }
 }

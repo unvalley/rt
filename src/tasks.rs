@@ -5,7 +5,7 @@ use std::process::Command;
 use inquire::error::InquireError;
 
 use crate::detect::{Runner, runner_command};
-use crate::error::RiError;
+use crate::error::RtError;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TaskItem {
@@ -22,10 +22,10 @@ impl fmt::Display for TaskItem {
     }
 }
 
-pub fn select_task(runner: Runner) -> Result<Option<String>, RiError> {
+pub fn select_task(runner: Runner) -> Result<Option<String>, RtError> {
     let tasks = list_tasks(runner)?;
     if tasks.is_empty() {
-        return Err(RiError::NoTasks {
+        return Err(RtError::NoTasks {
             tool: runner_command(runner),
         });
     }
@@ -33,12 +33,12 @@ pub fn select_task(runner: Runner) -> Result<Option<String>, RiError> {
     match inquire::Select::new("Select task", tasks).prompt() {
         Ok(item) => Ok(Some(item.name)),
         Err(InquireError::OperationCanceled | InquireError::OperationInterrupted) => Ok(None),
-        Err(err) => Err(RiError::Prompt(err)),
+        Err(err) => Err(RtError::Prompt(err)),
     }
 }
 
-fn list_tasks(runner: Runner) -> Result<Vec<TaskItem>, RiError> {
-    let cwd = std::env::current_dir().map_err(RiError::Io)?;
+fn list_tasks(runner: Runner) -> Result<Vec<TaskItem>, RtError> {
+    let cwd = std::env::current_dir().map_err(RtError::Io)?;
     let program = runner_command(runner);
     ensure_tool(program)?;
 
@@ -48,7 +48,7 @@ fn list_tasks(runner: Runner) -> Result<Vec<TaskItem>, RiError> {
             .args(args)
             .current_dir(&cwd)
             .output()
-            .map_err(RiError::Spawn)?;
+            .map_err(RtError::Spawn)?;
 
         let status = output.status.code().unwrap_or(2);
         let stdout = String::from_utf8_lossy(&output.stdout);
@@ -64,7 +64,7 @@ fn list_tasks(runner: Runner) -> Result<Vec<TaskItem>, RiError> {
         last_status = status;
     }
 
-    Err(RiError::ListFailed {
+    Err(RtError::ListFailed {
         tool: program,
         status: last_status,
     })
@@ -251,10 +251,10 @@ fn is_make_target_name(name: &str) -> bool {
         && name != "GNUmakefile"
 }
 
-fn ensure_tool(tool: &'static str) -> Result<(), RiError> {
+fn ensure_tool(tool: &'static str) -> Result<(), RtError> {
     match which::which(tool) {
         Ok(_) => Ok(()),
-        Err(_) => Err(RiError::ToolMissing { tool }),
+        Err(_) => Err(RtError::ToolMissing { tool }),
     }
 }
 

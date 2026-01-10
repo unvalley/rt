@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 #[derive(Debug, thiserror::Error)]
-pub enum RiError {
+pub enum RtError {
     #[error("no runner found in {cwd:?}")]
     NoRunnerFound { cwd: PathBuf },
     #[error("required tool not found in PATH: {tool}")]

@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use crate::error::RiError;
+use crate::error::RtError;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum Runner {
@@ -16,7 +16,7 @@ pub struct Detection {
     pub runner_file: PathBuf,
 }
 
-pub fn detect_runner(cwd: &Path) -> Result<Detection, RiError> {
+pub fn detect_runner(cwd: &Path) -> Result<Detection, RtError> {
     let candidates: [(&str, Runner); 12] = [
         ("Justfile", Runner::Just),
         ("justfile", Runner::Just),
@@ -42,7 +42,7 @@ pub fn detect_runner(cwd: &Path) -> Result<Detection, RiError> {
         }
     }
 
-    Err(RiError::NoRunnerFound {
+    Err(RtError::NoRunnerFound {
         cwd: cwd.to_path_buf(),
     })
 }
@@ -72,7 +72,7 @@ mod tests {
         let dir = tempdir().unwrap();
         let err = detect_runner(dir.path()).unwrap_err();
         match err {
-            RiError::NoRunnerFound { .. } => {}
+            RtError::NoRunnerFound { .. } => {}
             other => panic!("unexpected error: {other:?}"),
         }
     }

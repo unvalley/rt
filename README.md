@@ -11,8 +11,8 @@ and runs it for you.
 
 Supported files:
 
-- `justfile`
-- `Taskfile.yml` / `Taskfile.yaml`
+- `justfile` / `Justfile`
+- `Taskfile.yml` / `Taskfile.yaml` ...
 - `Makefile.toml`
 - `Makefile`
 

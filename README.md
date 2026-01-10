@@ -5,9 +5,7 @@ Inspired by [antfu/ni](https://github.com/antfu/ni).
 
 ## What it does
 
-`rt` looks at the current directory,
-detects the task runner,
-and runs it for you.
+`rt` looks for task runer files below, and runs the appropriate task runner command.
 
 Supported files:
 
@@ -17,7 +15,13 @@ Supported files:
 - `Makefile`
 
 
-## Usage
+## `rt`: run tasks selectively
+
+```sh
+rt
+```
+
+## `rt <task>`: run specific task
 
 ```sh
 rt <task> [-- args...]

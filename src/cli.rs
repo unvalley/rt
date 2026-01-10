@@ -7,7 +7,7 @@ pub struct Cli {
 }
 
 #[derive(Debug, Clone, Bpaf)]
-#[bpaf(options)]
+#[bpaf(options, fallback_to_usage)]
 struct Args {
     #[bpaf(positional("task"))]
     task: String,

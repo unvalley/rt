@@ -50,14 +50,18 @@ fn list_tasks(runner: Runner) -> Result<Vec<TaskItem>, RiError> {
             .output()
             .map_err(RiError::Spawn)?;
 
-        match output.status.code() {
-            Some(0) => {
-                let stdout = String::from_utf8_lossy(&output.stdout);
-                return Ok(parse_tasks(runner, &stdout));
-            }
-            Some(code) => last_status = code,
-            None => last_status = 2,
+        let status = output.status.code().unwrap_or(2);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+
+        if status == 0 {
+            return Ok(parse_tasks(runner, &stdout));
         }
+
+        if runner == Runner::Make && !stdout.trim().is_empty() {
+            return Ok(parse_tasks(runner, &stdout));
+        }
+
+        last_status = status;
     }
 
     Err(RiError::ListFailed {
@@ -75,7 +79,7 @@ fn list_command_variants(runner: Runner) -> Vec<Vec<&'static str>> {
             vec!["make", "--list-all"],
             vec!["make", "--list"],
         ],
-        Runner::Make => vec![vec!["-qp"]],
+        Runner::Make => vec![vec!["-rR", "-qp"], vec!["-qp"]],
     }
 }
 
@@ -185,24 +189,41 @@ fn parse_cargo_make(output: &str) -> Vec<TaskItem> {
 }
 
 fn parse_make(output: &str) -> Vec<TaskItem> {
+    let has_files_section = output.contains("\n# Files");
+    let mut in_files = !has_files_section;
     let mut names = BTreeSet::new();
+
     for line in output.lines() {
-        if line.is_empty() || line.starts_with('#') || line.starts_with('\t') || line.starts_with(' ') {
+        let line = line.trim_end();
+        if line.is_empty() {
             continue;
         }
 
-        let (target, _) = match line.split_once(':') {
+        let trimmed = line.trim_start();
+        if trimmed.starts_with("# Files") {
+            in_files = true;
+            continue;
+        }
+        if trimmed.starts_with("# Finished") {
+            break;
+        }
+        if let Some(rest) = trimmed.strip_prefix(".PHONY:") {
+            for name in rest.split_whitespace() {
+                names.insert(name.to_string());
+            }
+            continue;
+        }
+        if !in_files || trimmed.starts_with('#') || line.starts_with('\t') || line.starts_with(' ') {
+            continue;
+        }
+
+        let (target, _) = match trimmed.split_once(':') {
             Some(parts) => parts,
             None => continue,
         };
 
         let name = target.trim();
-        if name.is_empty()
-            || name.starts_with('.')
-            || name.contains('%')
-            || name.contains('$')
-            || name.contains('=')
-        {
+        if !is_make_target_name(name) {
             continue;
         }
 
@@ -216,6 +237,17 @@ fn parse_make(output: &str) -> Vec<TaskItem> {
             description: None,
         })
         .collect()
+}
+
+fn is_make_target_name(name: &str) -> bool {
+    !name.is_empty()
+        && !name.starts_with('.')
+        && !name.contains('%')
+        && !name.contains('$')
+        && !name.contains('=')
+        && name != "Makefile"
+        && name != "makefile"
+        && name != "GNUmakefile"
 }
 
 fn ensure_tool(tool: &'static str) -> Result<(), RiError> {

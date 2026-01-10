@@ -14,6 +14,10 @@ Supported files:
 - `Makefile.toml`
 - `Makefile`
 
+## Why?
+
+There are many task runners available, and different projects use different ones.
+
 
 ## `rt`: run tasks selectively
 

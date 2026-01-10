@@ -2,6 +2,7 @@ mod cli;
 mod detect;
 mod error;
 mod exec;
+mod tasks;
 
 use crate::error::RiError;
 
@@ -21,12 +22,22 @@ fn main() {
 fn run(cli: cli::Cli) -> Result<i32, RiError> {
     let cwd = std::env::current_dir().map_err(RiError::Io)?;
     let detection = detect::detect_runner(&cwd)?;
-    exec::run(detection.runner, &cli.task, &cli.passthrough)
+    let task = match cli.task {
+        Some(task) => Some(task),
+        None => tasks::select_task(detection.runner)?,
+    };
+
+    match task {
+        Some(task) => exec::run(detection.runner, &task, &cli.passthrough),
+        None => Ok(0),
+    }
 }
 
 fn classify_error(err: &RiError) -> i32 {
     match err {
-        RiError::NoRunnerFound { .. } | RiError::ToolMissing { .. } => 3,
-        RiError::Io(_) | RiError::Spawn(_) => 2,
+        RiError::NoRunnerFound { .. }
+        | RiError::ToolMissing { .. }
+        | RiError::NoTasks { .. } => 3,
+        RiError::ListFailed { .. } | RiError::Prompt(_) | RiError::Io(_) | RiError::Spawn(_) => 2,
     }
 }

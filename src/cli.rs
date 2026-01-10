@@ -2,15 +2,15 @@ use bpaf::Bpaf;
 
 #[derive(Debug, Clone)]
 pub struct Cli {
-    pub task: String,
+    pub task: Option<String>,
     pub passthrough: Vec<String>,
 }
 
 #[derive(Debug, Clone, Bpaf)]
-#[bpaf(options, fallback_to_usage)]
+#[bpaf(options)]
 struct Args {
     #[bpaf(positional("task"))]
-    task: String,
+    task: Option<String>,
     #[bpaf(positional("args"), many)]
     rest: Vec<String>,
 }

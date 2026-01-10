@@ -1,9 +1,9 @@
-# rt : run task runner right
+## rt : run task runner right
 
 `rt` runs the right task runner for the project.
 Inspired by [antfu/ni](https://github.com/antfu/ni).
 
-## What it does
+### What it does
 
 `rt` looks for task runer files below, and runs the appropriate task runner command.
 
@@ -14,23 +14,22 @@ Supported files:
 - `Makefile.toml`
 - `Makefile`
 
-## Why?
+### Install
 
-There are many task runners available, and different projects use different ones.
+wip
 
-
-## `rt`: run tasks selectively
+### `rt`: run tasks selectively
 
 ```sh
 rt
 ```
 
-## `rt <task>`: run specific task
+### `rt <task>`: run specific task
 
 ```sh
 rt <task> [-- args...]
 ```
 
-## Install
+### Why?
 
-wip
+There are many task runners available, and different projects use different ones.

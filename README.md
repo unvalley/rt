@@ -1,11 +1,11 @@
-# ri : run it right
+# rt : run task runner right
 
-`ri` runs the right task runner for the project.
+`rt` runs the right task runner for the project.
 Inspired by [antfu/ni](https://github.com/antfu/ni).
 
 ## What it does
 
-`ri` looks at the current directory,
+`rt` looks at the current directory,
 detects the task runner,
 and runs it for you.
 
@@ -20,7 +20,7 @@ Supported files:
 ## Usage
 
 ```sh
-ri <task> [-- args...]
+rt <task> [-- args...]
 ```
 
 ## Install

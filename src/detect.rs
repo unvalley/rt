@@ -5,7 +5,7 @@ use crate::error::RiError;
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum Runner {
     Just,
-    Task,
+    Taskfile,
     CargoMake,
     Make,
 }
@@ -17,10 +17,17 @@ pub struct Detection {
 }
 
 pub fn detect_runner(cwd: &Path) -> Result<Detection, RiError> {
-    let candidates: [(&str, Runner); 5] = [
+    let candidates: [(&str, Runner); 12] = [
+        ("Justfile", Runner::Just),
         ("justfile", Runner::Just),
-        ("Taskfile.yml", Runner::Task),
-        ("Taskfile.yaml", Runner::Task),
+        ("Taskfile.yml", Runner::Taskfile),
+        ("taskfile.yml", Runner::Taskfile),
+        ("Taskfile.yaml", Runner::Taskfile),
+        ("taskfile.yaml", Runner::Taskfile),
+        ("Taskfile.dist.yml", Runner::Taskfile),
+        ("taskfile.dist.yml", Runner::Taskfile),
+        ("Taskfile.dist.yaml", Runner::Taskfile),
+        ("taskfile.dist.yaml", Runner::Taskfile),
         ("Makefile.toml", Runner::CargoMake),
         ("Makefile", Runner::Make),
     ];
@@ -43,7 +50,7 @@ pub fn detect_runner(cwd: &Path) -> Result<Detection, RiError> {
 pub fn runner_command(runner: Runner) -> &'static str {
     match runner {
         Runner::Just => "just",
-        Runner::Task => "task",
+        Runner::Taskfile => "task",
         Runner::CargoMake => "cargo",
         Runner::Make => "make",
     }
@@ -90,14 +97,14 @@ mod tests {
         touch(dir.path(), "Taskfile.yaml");
 
         let detection = detect_runner(dir.path()).unwrap();
-        assert_eq!(detection.runner, Runner::Task);
+        assert_eq!(detection.runner, Runner::Taskfile);
         assert_eq!(detection.runner_file, yml);
     }
 
     #[test]
     fn runner_command_mapping() {
         assert_eq!(runner_command(Runner::Just), "just");
-        assert_eq!(runner_command(Runner::Task), "task");
+        assert_eq!(runner_command(Runner::Taskfile), "task");
         assert_eq!(runner_command(Runner::CargoMake), "cargo");
         assert_eq!(runner_command(Runner::Make), "make");
     }

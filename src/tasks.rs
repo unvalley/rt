@@ -4,7 +4,7 @@ use std::process::Command;
 
 use inquire::error::InquireError;
 
-use crate::detect::{runner_command, Runner};
+use crate::detect::{Runner, runner_command};
 use crate::error::RiError;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -73,7 +73,7 @@ fn list_tasks(runner: Runner) -> Result<Vec<TaskItem>, RiError> {
 fn list_command_variants(runner: Runner) -> Vec<Vec<&'static str>> {
     match runner {
         Runner::Just => vec![vec!["--list", "--unsorted"]],
-        Runner::Task => vec![vec!["--list-all"]],
+        Runner::Taskfile => vec![vec!["--list-all"]],
         Runner::CargoMake => vec![
             vec!["make", "--list-all-steps"],
             vec!["make", "--list-all"],
@@ -86,7 +86,7 @@ fn list_command_variants(runner: Runner) -> Vec<Vec<&'static str>> {
 fn parse_tasks(runner: Runner, output: &str) -> Vec<TaskItem> {
     match runner {
         Runner::Just => parse_just(output),
-        Runner::Task => parse_task(output),
+        Runner::Taskfile => parse_taskfile(output),
         Runner::CargoMake => parse_cargo_make(output),
         Runner::Make => parse_make(output),
     }
@@ -122,7 +122,7 @@ fn parse_just(output: &str) -> Vec<TaskItem> {
     items
 }
 
-fn parse_task(output: &str) -> Vec<TaskItem> {
+fn parse_taskfile(output: &str) -> Vec<TaskItem> {
     let mut items = Vec::new();
     for line in output.lines() {
         let mut line = line.trim_start();
@@ -213,7 +213,8 @@ fn parse_make(output: &str) -> Vec<TaskItem> {
             }
             continue;
         }
-        if !in_files || trimmed.starts_with('#') || line.starts_with('\t') || line.starts_with(' ') {
+        if !in_files || trimmed.starts_with('#') || line.starts_with('\t') || line.starts_with(' ')
+        {
             continue;
         }
 
@@ -283,7 +284,7 @@ task: Available tasks for this project:
 * build: Build the project
 * test: Run tests
 ";
-        let tasks = parse_task(output);
+        let tasks = parse_taskfile(output);
         assert_eq!(tasks.len(), 2);
         assert_eq!(tasks[0].name, "build");
         assert_eq!(tasks[0].description.as_deref(), Some("Build the project"));

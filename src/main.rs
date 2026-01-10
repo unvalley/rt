@@ -35,9 +35,7 @@ fn run(cli: cli::Cli) -> Result<i32, RiError> {
 
 fn classify_error(err: &RiError) -> i32 {
     match err {
-        RiError::NoRunnerFound { .. }
-        | RiError::ToolMissing { .. }
-        | RiError::NoTasks { .. } => 3,
+        RiError::NoRunnerFound { .. } | RiError::ToolMissing { .. } | RiError::NoTasks { .. } => 3,
         RiError::ListFailed { .. } | RiError::Prompt(_) | RiError::Io(_) | RiError::Spawn(_) => 2,
     }
 }

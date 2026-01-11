@@ -1,9 +1,10 @@
-use std::path::PathBuf;
-
 mod cli;
 mod detect;
 mod exec;
+mod parser;
 mod tasks;
+
+use std::path::PathBuf;
 
 fn main() {
     let cli = cli::parse();
@@ -18,9 +19,11 @@ fn main() {
     std::process::exit(exit_code);
 }
 
+/// Runs tasks based on the provided CLI arguments.
 fn run(cli: cli::Cli) -> Result<i32, RtError> {
     let cwd = std::env::current_dir().map_err(RtError::Io)?;
     let detection = detect::detect_runner(&cwd)?;
+
     let task = match cli.task {
         Some(task) => Some(task),
         None => tasks::select_task(detection.runner)?,

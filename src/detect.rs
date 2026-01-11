@@ -4,10 +4,10 @@ use crate::RtError;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum Runner {
-    Just,
+    Justfile,
     Taskfile,
     CargoMake,
-    Make,
+    Makefile,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -19,8 +19,8 @@ pub struct Detection {
 /// Detects the task runner used in the given directory.
 pub fn detect_runner(dir_path: &Path) -> Result<Detection, RtError> {
     let candidates: [(&str, Runner); 12] = [
-        ("Justfile", Runner::Just),
-        ("justfile", Runner::Just),
+        ("Justfile", Runner::Justfile),
+        ("justfile", Runner::Justfile),
         ("Taskfile.yml", Runner::Taskfile),
         ("taskfile.yml", Runner::Taskfile),
         ("Taskfile.yaml", Runner::Taskfile),
@@ -30,7 +30,7 @@ pub fn detect_runner(dir_path: &Path) -> Result<Detection, RtError> {
         ("Taskfile.dist.yaml", Runner::Taskfile),
         ("taskfile.dist.yaml", Runner::Taskfile),
         ("Makefile.toml", Runner::CargoMake),
-        ("Makefile", Runner::Make),
+        ("Makefile", Runner::Makefile),
     ];
 
     for (name, runner) in candidates {
@@ -50,10 +50,10 @@ pub fn detect_runner(dir_path: &Path) -> Result<Detection, RtError> {
 
 pub fn runner_command(runner: Runner) -> &'static str {
     match runner {
-        Runner::Just => "just",
+        Runner::Justfile => "just",
         Runner::Taskfile => "task",
         Runner::CargoMake => "cargo",
-        Runner::Make => "make",
+        Runner::Makefile => "make",
     }
 }
 
@@ -87,7 +87,7 @@ mod tests {
         let just_path = touch(dir.path(), "justfile");
 
         let detection = detect_runner(dir.path()).unwrap();
-        assert_eq!(detection.runner, Runner::Just);
+        assert_eq!(detection.runner, Runner::Justfile);
         let name = detection
             .runner_file
             .file_name()

@@ -1,7 +1,9 @@
 use std::process::Command;
 
-use crate::detect::{Runner, runner_command};
-use crate::error::RtError;
+use crate::{
+    RtError,
+    detect::{Runner, runner_command},
+};
 
 pub fn run(runner: Runner, task: &str, passthrough: &[String]) -> Result<i32, RtError> {
     let program = runner_command(runner);
@@ -29,7 +31,7 @@ fn make_command(runner: Runner) -> Command {
     command
 }
 
-fn ensure_tool(tool: &'static str) -> Result<(), RtError> {
+pub fn ensure_tool(tool: &'static str) -> Result<(), RtError> {
     match which::which(tool) {
         Ok(_) => Ok(()),
         Err(_) => Err(RtError::ToolMissing { tool }),

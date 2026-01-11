@@ -7,8 +7,9 @@ pub struct Cli {
 }
 
 #[derive(Debug, Clone, Bpaf)]
-#[bpaf(options)]
+#[bpaf(options, version)]
 struct Args {
+    /// Task name to run in your task runner files (e.g. `build`, `test`).
     #[bpaf(positional("task"))]
     task: Option<String>,
     #[bpaf(positional("args"), many)]

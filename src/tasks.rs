@@ -4,8 +4,9 @@ use std::process::Command;
 
 use inquire::error::InquireError;
 
+use crate::RtError;
 use crate::detect::{Runner, runner_command};
-use crate::error::RtError;
+use crate::exec::ensure_tool;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TaskItem {
@@ -52,7 +53,6 @@ fn list_tasks(runner: Runner) -> Result<Vec<TaskItem>, RtError> {
 
         let status = output.status.code().unwrap_or(2);
         let stdout = String::from_utf8_lossy(&output.stdout);
-
         if status == 0 {
             return Ok(parse_tasks(runner, &stdout));
         }
@@ -189,7 +189,9 @@ fn parse_cargo_make(output: &str) -> Vec<TaskItem> {
 }
 
 fn parse_make(output: &str) -> Vec<TaskItem> {
-    let has_files_section = output.contains("\n# Files");
+    let has_files_section = output
+        .lines()
+        .any(|line| line.trim_start().starts_with("# Files"));
     let mut in_files = !has_files_section;
     let mut names = BTreeSet::new();
 
@@ -251,13 +253,6 @@ fn is_make_target_name(name: &str) -> bool {
         && name != "GNUmakefile"
 }
 
-fn ensure_tool(tool: &'static str) -> Result<(), RtError> {
-    match which::which(tool) {
-        Ok(_) => Ok(()),
-        Err(_) => Err(RtError::ToolMissing { tool }),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -311,6 +306,21 @@ all: deps build
 install:
 \t@echo install
 %.o: %.c
+";
+        let tasks = parse_make(output);
+        let names: Vec<&str> = tasks.iter().map(|t| t.name.as_str()).collect();
+        assert_eq!(names, vec!["all", "install"]);
+    }
+
+    #[test]
+    fn parse_make_files_section() {
+        let output = "\
+# Files
+all: deps build
+install:
+\t@echo install
+
+# Finished Make data base
 ";
         let tasks = parse_make(output);
         let names: Vec<&str> = tasks.iter().map(|t| t.name.as_str()).collect();

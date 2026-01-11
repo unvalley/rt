@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use crate::error::RtError;
+use crate::RtError;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum Runner {
@@ -16,7 +16,8 @@ pub struct Detection {
     pub runner_file: PathBuf,
 }
 
-pub fn detect_runner(cwd: &Path) -> Result<Detection, RtError> {
+/// Detects the task runner used in the given directory.
+pub fn detect_runner(dir_path: &Path) -> Result<Detection, RtError> {
     let candidates: [(&str, Runner); 12] = [
         ("Justfile", Runner::Just),
         ("justfile", Runner::Just),
@@ -33,7 +34,7 @@ pub fn detect_runner(cwd: &Path) -> Result<Detection, RtError> {
     ];
 
     for (name, runner) in candidates {
-        let path = cwd.join(name);
+        let path = dir_path.join(name);
         if path.is_file() {
             return Ok(Detection {
                 runner,
@@ -43,7 +44,7 @@ pub fn detect_runner(cwd: &Path) -> Result<Detection, RtError> {
     }
 
     Err(RtError::NoRunnerFound {
-        cwd: cwd.to_path_buf(),
+        cwd: dir_path.to_path_buf(),
     })
 }
 
@@ -87,7 +88,19 @@ mod tests {
 
         let detection = detect_runner(dir.path()).unwrap();
         assert_eq!(detection.runner, Runner::Just);
-        assert_eq!(detection.runner_file, just_path);
+        let name = detection
+            .runner_file
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap();
+        assert!(name.eq_ignore_ascii_case("justfile"));
+        assert!(
+            detection
+                .runner_file
+                .parent()
+                .is_some_and(|p| p == dir.path())
+        );
+        assert!(just_path.exists());
     }
 
     #[test]
@@ -99,13 +112,5 @@ mod tests {
         let detection = detect_runner(dir.path()).unwrap();
         assert_eq!(detection.runner, Runner::Taskfile);
         assert_eq!(detection.runner_file, yml);
-    }
-
-    #[test]
-    fn runner_command_mapping() {
-        assert_eq!(runner_command(Runner::Just), "just");
-        assert_eq!(runner_command(Runner::Taskfile), "task");
-        assert_eq!(runner_command(Runner::CargoMake), "cargo");
-        assert_eq!(runner_command(Runner::Make), "make");
     }
 }

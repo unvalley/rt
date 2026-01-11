@@ -16,7 +16,14 @@ Supported files:
 
 ### Install
 
-wip
+```sh
+cargo install rt-cli
+```
+
+will be supported soon:
+
+- homebrew
+- nix
 
 ### `rt`: run tasks selectively
 

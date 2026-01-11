@@ -1,7 +1,11 @@
 [package]
-name = "rt"
+name = "rt-cli"
 version = "0.1.0"
 edition = "2024"
+
+[[bin]]
+name = "rt"
+path = "src/main.rs"
 description = "rt is a CLI tools for running task files correctly."
 repository = "https://github.com/unvalley/rt"
 license = "MIT"

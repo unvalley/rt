@@ -1,13 +1,13 @@
-mod cli;
 mod detect;
 mod exec;
 mod parser;
 mod tasks;
 
+use bpaf::Bpaf;
 use std::path::PathBuf;
 
 fn main() {
-    let cli = cli::parse();
+    let cli = parse_cli();
     let exit_code = match run(cli) {
         Ok(code) => code,
         Err(err) => {
@@ -19,8 +19,38 @@ fn main() {
     std::process::exit(exit_code);
 }
 
+#[derive(Debug, Clone, Bpaf)]
+#[bpaf(options, version)]
+struct Args {
+    /// Task name to run in your task runner files (e.g. `build`, `test`).
+    #[bpaf(positional("task"))]
+    task: Option<String>,
+    #[bpaf(positional("args"), many)]
+    rest: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Cli {
+    pub task: Option<String>,
+    pub passthrough: Vec<String>,
+}
+
+pub fn parse_cli() -> Cli {
+    let raw = args().run();
+    let passthrough = match raw.rest.split_first() {
+        Some((first, rest)) if first == "--" => rest.to_vec(),
+        Some((_first, _rest)) => raw.rest,
+        None => Vec::new(),
+    };
+
+    Cli {
+        task: raw.task,
+        passthrough,
+    }
+}
+
 /// Runs tasks based on the provided CLI arguments.
-fn run(cli: cli::Cli) -> Result<i32, RtError> {
+fn run(cli: Cli) -> Result<i32, RtError> {
     let cwd = std::env::current_dir().map_err(RtError::Io)?;
     let detection = detect::detect_runner(&cwd)?;
 

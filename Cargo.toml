@@ -2,6 +2,9 @@
 name = "rt"
 version = "0.1.0"
 edition = "2024"
+description = "rt is a CLI tools for running task files correctly."
+repository = "https://github.com/unvalley/rt"
+exclude = ["/.github", ".gitignore"]
 
 [dependencies]
 bpaf = { version = "0.9.20", features = ["derive", "dull-color"] }

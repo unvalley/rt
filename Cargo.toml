@@ -4,6 +4,9 @@ version = "0.1.0"
 edition = "2024"
 description = "rt is a CLI tools for running task files correctly."
 repository = "https://github.com/unvalley/rt"
+license = "MIT"
+homepage = "https://github.com/unvalley/rt"
+documentation = "https://github.com/unvalley/rt/README.md"
 exclude = ["/.github", ".gitignore"]
 
 [dependencies]

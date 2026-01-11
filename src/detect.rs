@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 use crate::RtError;
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum Runner {
     Justfile,
     Taskfile,
@@ -46,6 +46,49 @@ pub fn detect_runner(dir_path: &Path) -> Result<Detection, RtError> {
     Err(RtError::NoRunnerFound {
         cwd: dir_path.to_path_buf(),
     })
+}
+
+/// Detects all available runners in the given directory, in priority order.
+pub fn detect_runners(dir_path: &Path) -> Result<Vec<Detection>, RtError> {
+    let candidates: [(&str, Runner); 12] = [
+        ("Justfile", Runner::Justfile),
+        ("justfile", Runner::Justfile),
+        ("Taskfile.yml", Runner::Taskfile),
+        ("taskfile.yml", Runner::Taskfile),
+        ("Taskfile.yaml", Runner::Taskfile),
+        ("taskfile.yaml", Runner::Taskfile),
+        ("Taskfile.dist.yml", Runner::Taskfile),
+        ("taskfile.dist.yml", Runner::Taskfile),
+        ("Taskfile.dist.yaml", Runner::Taskfile),
+        ("taskfile.dist.yaml", Runner::Taskfile),
+        ("Makefile.toml", Runner::CargoMake),
+        ("Makefile", Runner::Makefile),
+    ];
+
+    let mut seen = std::collections::HashSet::new();
+    let mut detections = Vec::new();
+
+    for (name, runner) in candidates {
+        if seen.contains(&runner) {
+            continue;
+        }
+        let path = dir_path.join(name);
+        if path.is_file() {
+            seen.insert(runner);
+            detections.push(Detection {
+                runner,
+                runner_file: path,
+            });
+        }
+    }
+
+    if detections.is_empty() {
+        Err(RtError::NoRunnerFound {
+            cwd: dir_path.to_path_buf(),
+        })
+    } else {
+        Ok(detections)
+    }
 }
 
 pub fn runner_command(runner: Runner) -> &'static str {

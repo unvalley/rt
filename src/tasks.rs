@@ -32,10 +32,46 @@ pub fn select_task(runner: Runner) -> Result<Option<String>, RtError> {
         });
     }
 
-    match inquire::Select::new("Select task", tasks).prompt() {
+    let max_name_len = tasks
+        .iter()
+        .map(|task| task.name.chars().count())
+        .max()
+        .unwrap_or(0);
+
+    let items: Vec<TaskChoice> = tasks
+        .into_iter()
+        .map(|task| TaskChoice::new(task, max_name_len))
+        .collect();
+
+    match inquire::Select::new("Select task", items).prompt() {
         Ok(item) => Ok(Some(item.name)),
         Err(InquireError::OperationCanceled | InquireError::OperationInterrupted) => Ok(None),
         Err(err) => Err(RtError::Prompt(err)),
+    }
+}
+
+#[derive(Debug, Clone)]
+struct TaskChoice {
+    name: String,
+    display: String,
+}
+
+impl TaskChoice {
+    fn new(task: TaskItem, width: usize) -> Self {
+        let display = match task.description {
+            Some(desc) => format!("{:width$}  -  {}", task.name, desc, width = width),
+            None => task.name.clone(),
+        };
+        Self {
+            name: task.name,
+            display,
+        }
+    }
+}
+
+impl fmt::Display for TaskChoice {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.display)
     }
 }
 

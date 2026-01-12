@@ -1,14 +1,11 @@
 ## rt : runs tasks right
 
 One command to run tasks across task runners.
-
 Inspired by [antfu/ni](https://github.com/antfu/ni).
 
 ### What it does
 
 `rt` looks for task runer files below, and runs the appropriate task runner command.
-
-Supported files:
 
 - make: `Makefile`
 - just: `justfile` / `Justfile`
@@ -16,7 +13,7 @@ Supported files:
 - cargo-make: `Makefile.toml`
 - mise: `mise.toml`
 
-### `rt` is useful if you
+### rt is useful if you
 
 - don’t want to care whether a repo uses make, just, or task
 - want to select and run tasks with an interactive UI

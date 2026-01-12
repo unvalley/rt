@@ -3,6 +3,7 @@ use crate::tasks::TaskItem;
 
 mod cargo_make;
 mod justfile;
+mod mask;
 mod makefile;
 mod mise;
 mod taskfile;
@@ -12,6 +13,7 @@ pub fn parse_tasks(runner: Runner, output: &str) -> Vec<TaskItem> {
     match runner {
         Runner::Justfile => justfile::parse(output),
         Runner::Taskfile => taskfile::parse(output),
+        Runner::Maskfile => mask::parse(output),
         Runner::Mise => mise::parse(output),
         Runner::CargoMake => cargo_make::parse(output),
         Runner::Makefile => makefile::parse(output),

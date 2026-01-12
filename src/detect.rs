@@ -6,6 +6,7 @@ use crate::RtError;
 pub enum Runner {
     Justfile,
     Taskfile,
+    Maskfile,
     Mise,
     CargoMake,
     Makefile,
@@ -19,7 +20,7 @@ pub struct Detection {
 
 /// Detects the task runner used in the given directory.
 pub fn detect_runner(dir_path: &Path) -> Result<Detection, RtError> {
-    let candidates: [(&str, Runner); 13] = [
+    let candidates: [(&str, Runner); 15] = [
         ("Justfile", Runner::Justfile),
         ("justfile", Runner::Justfile),
         ("Taskfile.yml", Runner::Taskfile),
@@ -30,6 +31,8 @@ pub fn detect_runner(dir_path: &Path) -> Result<Detection, RtError> {
         ("taskfile.dist.yml", Runner::Taskfile),
         ("Taskfile.dist.yaml", Runner::Taskfile),
         ("taskfile.dist.yaml", Runner::Taskfile),
+        ("maskfile.md", Runner::Maskfile),
+        ("Maskfile.md", Runner::Maskfile),
         ("mise.toml", Runner::Mise),
         ("Makefile.toml", Runner::CargoMake),
         ("Makefile", Runner::Makefile),
@@ -52,7 +55,7 @@ pub fn detect_runner(dir_path: &Path) -> Result<Detection, RtError> {
 
 /// Detects all available runners in the given directory, in priority order.
 pub fn detect_runners(dir_path: &Path) -> Result<Vec<Detection>, RtError> {
-    let candidates: [(&str, Runner); 13] = [
+    let candidates: [(&str, Runner); 15] = [
         ("Justfile", Runner::Justfile),
         ("justfile", Runner::Justfile),
         ("Taskfile.yml", Runner::Taskfile),
@@ -63,6 +66,8 @@ pub fn detect_runners(dir_path: &Path) -> Result<Vec<Detection>, RtError> {
         ("taskfile.dist.yml", Runner::Taskfile),
         ("Taskfile.dist.yaml", Runner::Taskfile),
         ("taskfile.dist.yaml", Runner::Taskfile),
+        ("maskfile.md", Runner::Maskfile),
+        ("Maskfile.md", Runner::Maskfile),
         ("mise.toml", Runner::Mise),
         ("Makefile.toml", Runner::CargoMake),
         ("Makefile", Runner::Makefile),
@@ -99,6 +104,7 @@ pub fn runner_command(runner: Runner) -> &'static str {
     match runner {
         Runner::Justfile => "just",
         Runner::Taskfile => "task",
+        Runner::Maskfile => "mask",
         Runner::Mise => "mise",
         // cargo-make is a subcommand of cargo, so we need to check cargo
         Runner::CargoMake => "cargo",
@@ -132,6 +138,7 @@ mod tests {
         let dir = tempdir().unwrap();
         touch(dir.path(), "Makefile");
         touch(dir.path(), "Makefile.toml");
+        touch(dir.path(), "maskfile.md");
         touch(dir.path(), "Taskfile.yml");
         let just_path = touch(dir.path(), "justfile");
 
@@ -167,6 +174,7 @@ mod tests {
     fn runner_command_mapping() {
         assert_eq!(runner_command(Runner::Justfile), "just");
         assert_eq!(runner_command(Runner::Taskfile), "task");
+        assert_eq!(runner_command(Runner::Maskfile), "mask");
         assert_eq!(runner_command(Runner::Mise), "mise");
         assert_eq!(runner_command(Runner::CargoMake), "cargo");
         assert_eq!(runner_command(Runner::Makefile), "make");
@@ -178,6 +186,7 @@ mod tests {
         touch(dir.path(), "Makefile");
         touch(dir.path(), "Makefile.toml");
         touch(dir.path(), "mise.toml");
+        touch(dir.path(), "maskfile.md");
         touch(dir.path(), "Taskfile.yml");
         touch(dir.path(), "justfile");
 
@@ -189,6 +198,7 @@ mod tests {
             vec![
                 Runner::Justfile,
                 Runner::Taskfile,
+                Runner::Maskfile,
                 Runner::Mise,
                 Runner::CargoMake,
                 Runner::Makefile,

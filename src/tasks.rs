@@ -109,6 +109,7 @@ fn list_command_variants(runner: Runner) -> Vec<Vec<&'static str>> {
     match runner {
         Runner::Justfile => vec![vec!["--list", "--unsorted"]],
         Runner::Taskfile => vec![vec!["--list-all"]],
+        Runner::Maskfile => vec![vec!["--introspect"]],
         Runner::Mise => vec![vec!["tasks", "ls", "--json"]],
         Runner::CargoMake => vec![
             vec!["make", "--list-all-steps"],
@@ -127,6 +128,12 @@ mod tests {
     fn list_command_variants_for_mise() {
         let variants = list_command_variants(Runner::Mise);
         assert_eq!(variants, vec![vec!["tasks", "ls", "--json"]]);
+    }
+
+    #[test]
+    fn list_command_variants_for_mask() {
+        let variants = list_command_variants(Runner::Maskfile);
+        assert_eq!(variants, vec![vec!["--introspect"]]);
     }
 
     #[test]

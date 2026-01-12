@@ -109,6 +109,7 @@ fn list_command_variants(runner: Runner) -> Vec<Vec<&'static str>> {
     match runner {
         Runner::Justfile => vec![vec!["--list", "--unsorted"]],
         Runner::Taskfile => vec![vec!["--list-all"]],
+        Runner::Mise => vec![vec!["tasks", "ls", "--json"]],
         Runner::CargoMake => vec![
             vec!["make", "--list-all-steps"],
             vec!["make", "--list-all"],

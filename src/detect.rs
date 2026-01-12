@@ -171,4 +171,28 @@ mod tests {
         assert_eq!(runner_command(Runner::CargoMake), "cargo");
         assert_eq!(runner_command(Runner::Makefile), "make");
     }
+
+    #[test]
+    fn detect_runners_returns_all_in_priority_order() {
+        let dir = tempdir().unwrap();
+        touch(dir.path(), "Makefile");
+        touch(dir.path(), "Makefile.toml");
+        touch(dir.path(), "mise.toml");
+        touch(dir.path(), "Taskfile.yml");
+        touch(dir.path(), "justfile");
+
+        let detections = detect_runners(dir.path()).unwrap();
+        let runners: Vec<Runner> = detections.into_iter().map(|d| d.runner).collect();
+
+        assert_eq!(
+            runners,
+            vec![
+                Runner::Justfile,
+                Runner::Taskfile,
+                Runner::Mise,
+                Runner::CargoMake,
+                Runner::Makefile,
+            ]
+        );
+    }
 }

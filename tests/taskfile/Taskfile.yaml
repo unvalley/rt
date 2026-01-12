@@ -1,0 +1,19 @@
+version: "3"
+
+tasks:
+  build:
+    desc: build main
+    cmds:
+      - cc *.c -o main
+  test-all:
+    desc: test everything
+    deps:
+      - build
+    cmds:
+      - ./test --all
+  test:
+    desc: run a specific test
+    deps:
+      - build
+    cmds:
+      - ./test --test {{.TEST}}

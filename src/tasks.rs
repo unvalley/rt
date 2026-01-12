@@ -118,3 +118,27 @@ fn list_command_variants(runner: Runner) -> Vec<Vec<&'static str>> {
         Runner::Makefile => vec![vec!["-rR", "-qp"], vec!["-qp"]],
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn list_command_variants_for_mise() {
+        let variants = list_command_variants(Runner::Mise);
+        assert_eq!(variants, vec![vec!["tasks", "ls", "--json"]]);
+    }
+
+    #[test]
+    fn list_command_variants_for_cargo_make() {
+        let variants = list_command_variants(Runner::CargoMake);
+        assert_eq!(
+            variants,
+            vec![
+                vec!["make", "--list-all-steps"],
+                vec!["make", "--list-all"],
+                vec!["make", "--list"],
+            ]
+        );
+    }
+}

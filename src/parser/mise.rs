@@ -47,4 +47,11 @@ mod tests {
         assert_eq!(tasks[1].name, "gen-schema");
         assert_eq!(tasks[1].description, None);
     }
+
+    #[test]
+    fn parse_mise_invalid_json() {
+        let output = "not json";
+        let tasks = parse(output);
+        assert!(tasks.is_empty());
+    }
 }

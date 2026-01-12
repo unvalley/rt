@@ -1,0 +1,13 @@
+[tasks.build]
+description = "build main"
+run = "cc *.c -o main"
+
+[tasks.test-all]
+description = "test everything"
+depends = ["build"]
+run = "./test --all"
+
+[tasks.test]
+description = "run a specific test"
+depends = ["build"]
+run = "./test --test {{TEST}}"

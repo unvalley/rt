@@ -3,8 +3,8 @@ use crate::tasks::TaskItem;
 
 mod cargo_make;
 mod justfile;
-mod mask;
 mod makefile;
+mod mask;
 mod mise;
 mod taskfile;
 

@@ -91,10 +91,12 @@ pub fn detect_runners(dir_path: &Path) -> Result<Vec<Detection>, RtError> {
     }
 }
 
+/// Returns the command name for the given runner.
 pub fn runner_command(runner: Runner) -> &'static str {
     match runner {
         Runner::Justfile => "just",
         Runner::Taskfile => "task",
+        // cargo-make is a subcommand of cargo, so we need to check cargo
         Runner::CargoMake => "cargo",
         Runner::Makefile => "make",
     }

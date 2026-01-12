@@ -4,11 +4,7 @@ use crate::RtError;
 use crate::detect::{Runner, runner_command};
 
 pub fn run(runner: Runner, task: &str, passthrough: &[String]) -> Result<i32, RtError> {
-    let program = runner_command(runner);
-    ensure_tool(program)?;
-
-    let mut command = generate_command(runner);
-
+    let mut command = base_command(runner)?;
     let current_dir = std::env::current_dir().map_err(RtError::Io)?;
     let status = command
         .arg(task)
@@ -20,13 +16,14 @@ pub fn run(runner: Runner, task: &str, passthrough: &[String]) -> Result<i32, Rt
     Ok(status.code().unwrap_or(2))
 }
 
-fn generate_command(runner: Runner) -> Command {
+pub fn base_command(runner: Runner) -> Result<Command, RtError> {
     let program = runner_command(runner);
+    ensure_tool(program)?;
     let mut command = Command::new(program);
     if runner == Runner::CargoMake {
         command.arg("make");
     }
-    command
+    Ok(command)
 }
 
 pub fn ensure_tool(tool: &'static str) -> Result<(), RtError> {

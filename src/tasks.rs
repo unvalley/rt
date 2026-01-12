@@ -1,11 +1,9 @@
-use std::fmt;
-use std::process::Command;
-
 use inquire::error::InquireError;
+use std::fmt;
 
 use crate::RtError;
 use crate::detect::{Runner, runner_command};
-use crate::exec::ensure_tool;
+use crate::exec::base_command;
 use crate::parser;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -77,15 +75,13 @@ impl fmt::Display for TaskChoice {
 
 /// Lists tasks for the given runner by invoking its list command.
 fn list_tasks(runner: Runner) -> Result<Vec<TaskItem>, RtError> {
-    let cwd = std::env::current_dir().map_err(RtError::Io)?;
-    let program = runner_command(runner);
-    ensure_tool(program)?;
-
     let mut last_status = 2;
     for args in list_command_variants(runner) {
-        let output = Command::new(program)
+        let current_dir = std::env::current_dir().map_err(RtError::Io)?;
+        let mut command = base_command(runner)?;
+        let output = command
             .args(args)
-            .current_dir(&cwd)
+            .current_dir(&current_dir)
             .output()
             .map_err(RtError::Spawn)?;
 
@@ -103,7 +99,7 @@ fn list_tasks(runner: Runner) -> Result<Vec<TaskItem>, RtError> {
     }
 
     Err(RtError::ListFailed {
-        tool: program,
+        tool: runner_command(runner),
         status: last_status,
     })
 }

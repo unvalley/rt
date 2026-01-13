@@ -13,6 +13,11 @@ exclude = ["/.github", ".gitignore"]
 name = "rt"
 path = "src/main.rs"
 
+[package.metadata.binstall]
+pkg-url = "{ repo }/releases/download/v{ version }/{ name }-{ target }-v{ version }.{ archive-format }"
+bin-dir = "{ name }-{ target }-v{ version }/{ bin }{ binary-ext }"
+pkg-fmt = "tgz"
+
 [dependencies]
 bpaf = { version = "0.9.20", features = ["derive", "dull-color"] }
 thiserror = "2.0.17"

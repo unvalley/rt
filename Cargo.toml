@@ -17,6 +17,7 @@ path = "src/main.rs"
 pkg-url = "{ repo }/releases/download/v{ version }/{ name }-{ target }-v{ version }.{ archive-format }"
 bin-dir = "{ name }-{ target }-v{ version }/{ bin }{ binary-ext }"
 pkg-fmt = "tgz"
+disabled-strategies = ["quick-install", "compile"]
 
 [dependencies]
 bpaf = { version = "0.9.20", features = ["derive", "dull-color"] }

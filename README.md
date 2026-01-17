@@ -25,6 +25,10 @@ Inspired by [antfu/ni](https://github.com/antfu/ni).
 cargo install rt-cli
 ```
 
+```sh
+cargo binstall rt-cli
+```
+
 Planned:
 
 - homebrew

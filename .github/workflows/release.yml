@@ -9,8 +9,44 @@ permissions:
   contents: write
 
 jobs:
+  verify:
+    name: Verify Version
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Verify Cargo.toml version matches tag
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          version="$(
+            python3 - <<'PY'
+import re
+from pathlib import Path
+
+text = Path("Cargo.toml").read_text()
+in_package = False
+for line in text.splitlines():
+    if line.strip().startswith("["):
+        in_package = line.strip() == "[package]"
+        continue
+    if in_package:
+        m = re.match(r'^\s*version\s*=\s*"([^"]+)"', line)
+        if m:
+            print(m.group(1))
+            break
+else:
+    raise SystemExit("version not found in [package]")
+PY
+          )"
+          if [[ "${tag}" != "${version}" ]]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} does not match Cargo.toml version ${version}."
+            exit 1
+          fi
+
   build:
     name: Build (${{ matrix.target }})
+    needs: verify
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false

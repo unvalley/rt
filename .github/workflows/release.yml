@@ -30,7 +30,11 @@ jobs:
         run: |
           tag="${TAG_NAME#v}"
           version="$(
-            python3 -c 'import re, pathlib; text = pathlib.Path("Cargo.toml").read_text(); m = re.search(r"(?ms)^\\[package\\].*?^version\\s*=\\s*\\\"([^\\\"]+)\\\"", text); print(m.group(1)) if m else (_ for _ in ()).throw(SystemExit("version not found in [package]"))'
+            awk -F' *= *' '
+              $0=="[package]" {in=1; next}
+              /^\[/ {in=0}
+              in && $1=="version" {gsub(/"/,"",$2); print $2; exit}
+            ' Cargo.toml
           )"
           if [[ "${tag}" != "${version}" ]]; then
             echo "::error::Tag ${TAG_NAME} does not match Cargo.toml version ${version}."

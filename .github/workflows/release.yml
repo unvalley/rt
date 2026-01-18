@@ -31,9 +31,9 @@ jobs:
           tag="${TAG_NAME#v}"
           version="$(
             awk -F' *= *' '
-              $0=="[package]" {in=1; next}
-              /^\[/ {in=0}
-              in && $1=="version" {gsub(/"/,"",$2); print $2; exit}
+              $0=="[package]" {in_pkg=1; next}
+              /^\[/ {in_pkg=0}
+              in_pkg && $1=="version" {gsub(/"/,"",$2); print $2; exit}
             ' Cargo.toml
           )"
           if [[ "${tag}" != "${version}" ]]; then

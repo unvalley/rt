@@ -20,24 +20,24 @@ jobs:
         run: |
           tag="${GITHUB_REF_NAME#v}"
           version="$(
-            python3 - <<'PY'
-import re
-from pathlib import Path
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
 
-text = Path("Cargo.toml").read_text()
-in_package = False
-for line in text.splitlines():
-    if line.strip().startswith("["):
-        in_package = line.strip() == "[package]"
-        continue
-    if in_package:
-        m = re.match(r'^\s*version\s*=\s*"([^"]+)"', line)
-        if m:
-            print(m.group(1))
-            break
-else:
-    raise SystemExit("version not found in [package]")
-PY
+          text = Path("Cargo.toml").read_text()
+          in_package = False
+          for line in text.splitlines():
+              if line.strip().startswith("["):
+                  in_package = line.strip() == "[package]"
+                  continue
+              if in_package:
+                  m = re.match(r'^\s*version\s*=\s*"([^"]+)"', line)
+                  if m:
+                      print(m.group(1))
+                      break
+          else:
+              raise SystemExit("version not found in [package]")
+          PY
           )"
           if [[ "${tag}" != "${version}" ]]; then
             echo "::error::Tag ${GITHUB_REF_NAME} does not match Cargo.toml version ${version}."

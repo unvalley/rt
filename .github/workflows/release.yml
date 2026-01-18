@@ -4,9 +4,17 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag (e.g. v0.1.2)"
+        required: true
 
 permissions:
   contents: write
+
+env:
+  TAG_NAME: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
 
 jobs:
   verify:
@@ -15,32 +23,17 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ env.TAG_NAME }}
 
       - name: Verify Cargo.toml version matches tag
         run: |
-          tag="${GITHUB_REF_NAME#v}"
+          tag="${TAG_NAME#v}"
           version="$(
-          python3 - <<'PY'
-          import re
-          from pathlib import Path
-
-          text = Path("Cargo.toml").read_text()
-          in_package = False
-          for line in text.splitlines():
-              if line.strip().startswith("["):
-                  in_package = line.strip() == "[package]"
-                  continue
-              if in_package:
-                  m = re.match(r'^\s*version\s*=\s*"([^"]+)"', line)
-                  if m:
-                      print(m.group(1))
-                      break
-          else:
-              raise SystemExit("version not found in [package]")
-          PY
+            python3 -c 'import re, pathlib; text = pathlib.Path("Cargo.toml").read_text(); m = re.search(r"(?ms)^\\[package\\].*?^version\\s*=\\s*\\\"([^\\\"]+)\\\"", text); print(m.group(1)) if m else (_ for _ in ()).throw(SystemExit("version not found in [package]"))'
           )"
           if [[ "${tag}" != "${version}" ]]; then
-            echo "::error::Tag ${GITHUB_REF_NAME} does not match Cargo.toml version ${version}."
+            echo "::error::Tag ${TAG_NAME} does not match Cargo.toml version ${version}."
             exit 1
           fi
 
@@ -64,6 +57,8 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ env.TAG_NAME }}
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -87,7 +82,7 @@ jobs:
         shell: bash
         run: |
           name="rt-cli"
-          version="${GITHUB_REF_NAME#v}"
+          version="${TAG_NAME#v}"
           target="${{ matrix.target }}"
           pkg="${name}-${target}-v${version}"
           mkdir -p "${pkg}"
@@ -120,3 +115,4 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: dist/**/*.tgz
+          tag_name: ${{ env.TAG_NAME }}

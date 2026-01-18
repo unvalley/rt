@@ -41,7 +41,23 @@ pub fn select_task(runner: Runner) -> Result<Option<String>, RtError> {
         .map(|task| TaskChoice::new(task, max_name_len))
         .collect();
 
-    match inquire::Select::new("Select task", items).prompt() {
+    let items_len = items.len();
+    // Prefer exact/prefix matches while keeping stable ordering for ties.
+    let scorer =
+        move |input: &str, option: &TaskChoice, string_value: &str, idx: usize| -> Option<i64> {
+            let base_score = (inquire::Select::<TaskChoice>::DEFAULT_SCORER)(
+                input,
+                option,
+                string_value,
+                idx,
+            );
+            score_task(input, string_value, idx, items_len, base_score)
+        };
+
+    match inquire::Select::new("Select task", items)
+        .with_scorer(&scorer)
+        .prompt()
+    {
         Ok(item) => Ok(Some(item.name)),
         Err(InquireError::OperationCanceled | InquireError::OperationInterrupted) => Ok(None),
         Err(err) => Err(RtError::Prompt(err)),
@@ -71,6 +87,42 @@ impl fmt::Display for TaskChoice {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&self.display)
     }
+}
+
+fn score_task(
+    input: &str,
+    string_value: &str,
+    idx: usize,
+    items_len: usize,
+    base_score: Option<i64>,
+) -> Option<i64> {
+    let input = input.trim();
+    if input.is_empty() {
+        return Some(items_len.saturating_sub(idx) as i64);
+    }
+
+    let input_lower = input.to_ascii_lowercase();
+    let value_lower = string_value.to_ascii_lowercase();
+
+    let mut score = match base_score {
+        Some(score) => score,
+        None => {
+            if value_lower == input_lower || value_lower.starts_with(&input_lower) {
+                0
+            } else {
+                return None;
+            }
+        }
+    };
+
+    if value_lower == input_lower {
+        score = score.saturating_add(10_000_000);
+    } else if value_lower.starts_with(&input_lower) {
+        score = score.saturating_add(5_000_000);
+    }
+
+    score = score.saturating_add(items_len.saturating_sub(idx) as i64);
+    Some(score)
 }
 
 /// Lists tasks for the given runner by invoking its list command.
@@ -123,6 +175,31 @@ fn list_command_variants(runner: Runner) -> Vec<Vec<&'static str>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn score_task_prefers_exact_over_prefix() {
+        let items_len = 2;
+        let exact = score_task("format", "format", 1, items_len, Some(0)).unwrap();
+        let prefix = score_task("format", "format-rust", 0, items_len, Some(0)).unwrap();
+
+        assert!(exact > prefix);
+    }
+
+    #[test]
+    fn score_task_filters_non_matches() {
+        let items_len = 1;
+        let score = score_task("fmt", "build", 0, items_len, None);
+        assert!(score.is_none());
+    }
+
+    #[test]
+    fn score_task_keeps_stable_order_for_equal_scores() {
+        let items_len = 3;
+        let first = score_task("foo", "foobar", 0, items_len, Some(0)).unwrap();
+        let second = score_task("foo", "foobaz", 1, items_len, Some(0)).unwrap();
+
+        assert!(first > second);
+    }
 
     #[test]
     fn list_command_variants_for_mise() {

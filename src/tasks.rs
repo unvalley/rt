@@ -45,12 +45,8 @@ pub fn select_task(runner: Runner) -> Result<Option<String>, RtError> {
     // Prefer exact/prefix matches while keeping stable ordering for ties.
     let scorer =
         move |input: &str, option: &TaskChoice, string_value: &str, idx: usize| -> Option<i64> {
-            let base_score = (inquire::Select::<TaskChoice>::DEFAULT_SCORER)(
-                input,
-                option,
-                string_value,
-                idx,
-            );
+            let base_score =
+                (inquire::Select::<TaskChoice>::DEFAULT_SCORER)(input, option, string_value, idx);
             score_task(input, string_value, idx, items_len, base_score)
         };
 

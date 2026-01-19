@@ -99,26 +99,22 @@ fn score_task(
 
     let input_lower = input.to_ascii_lowercase();
     let value_lower = string_value.to_ascii_lowercase();
+    let exact = value_lower == input_lower;
+    let prefix = !exact && value_lower.starts_with(&input_lower);
 
-    let mut score = match base_score {
-        Some(score) => score,
-        None => {
-            if value_lower == input_lower || value_lower.starts_with(&input_lower) {
-                0
-            } else {
-                return None;
-            }
-        }
+    let score = base_score.or_else(|| (exact || prefix).then_some(0))?;
+    let boost = if exact {
+        10_000_000
+    } else if prefix {
+        5_000_000
+    } else {
+        0
     };
-
-    if value_lower == input_lower {
-        score = score.saturating_add(10_000_000);
-    } else if value_lower.starts_with(&input_lower) {
-        score = score.saturating_add(5_000_000);
-    }
-
-    score = score.saturating_add(items_len.saturating_sub(idx) as i64);
-    Some(score)
+    Some(
+        score
+            .saturating_add(boost)
+            .saturating_add(items_len.saturating_sub(idx) as i64),
+    )
 }
 
 /// Lists tasks for the given runner by invoking its list command.

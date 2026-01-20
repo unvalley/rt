@@ -32,26 +32,23 @@ pub fn select_task(runner: Runner) -> Result<Option<String>, RtError> {
 
     let max_name_len = tasks
         .iter()
-        .map(|task| task.name.chars().count())
+        .map(|t| t.name.chars().count())
         .max()
         .unwrap_or(0);
 
     let items: Vec<TaskChoice> = tasks
         .into_iter()
-        .map(|task| TaskChoice::new(task, max_name_len))
+        .map(|t| TaskChoice::new(t, max_name_len))
         .collect();
 
     let items_len = items.len();
-    // Prefer exact/prefix matches while keeping stable ordering for ties.
-    let scorer =
-        move |input: &str, option: &TaskChoice, string_value: &str, idx: usize| -> Option<i64> {
-            let base_score =
-                (inquire::Select::<TaskChoice>::DEFAULT_SCORER)(input, option, string_value, idx);
-            score_task(input, string_value, idx, items_len, base_score)
-        };
+    let default_scorer = inquire::Select::<TaskChoice>::DEFAULT_SCORER;
 
     match inquire::Select::new("Select task", items)
-        .with_scorer(&scorer)
+        .with_scorer(&move |input, option, string_value, idx| {
+            let base = default_scorer(input, option, string_value, idx);
+            score_task(input, string_value, idx, items_len, base)
+        })
         .prompt()
     {
         Ok(item) => Ok(Some(item.name)),
@@ -59,7 +56,6 @@ pub fn select_task(runner: Runner) -> Result<Option<String>, RtError> {
         Err(err) => Err(RtError::Prompt(err)),
     }
 }
-
 #[derive(Debug, Clone)]
 struct TaskChoice {
     name: String,

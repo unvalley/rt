@@ -45,6 +45,7 @@ pub fn select_task(runner: Runner) -> Result<Option<String>, RtError> {
     let default_scorer = inquire::Select::<TaskChoice>::DEFAULT_SCORER;
 
     match inquire::Select::new("Select task", items)
+        .with_page_size(10)
         .with_scorer(&move |input, option, string_value, idx| {
             let base = default_scorer(input, option, string_value, idx);
             score_task(input, string_value, idx, items_len, base)

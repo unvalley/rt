@@ -1,4 +1,6 @@
 use crate::detect::Runner;
+use std::path::{Path, PathBuf};
+
 use crate::tasks::TaskItem;
 
 mod cargo_make;
@@ -18,4 +20,12 @@ pub fn parse_tasks(runner: Runner, output: &str) -> Vec<TaskItem> {
         Runner::CargoMake => cargo_make::parse(output),
         Runner::Makefile => makefile::parse(output),
     }
+}
+
+pub fn find_justfile(dir: &Path) -> Option<PathBuf> {
+    justfile::find_justfile(dir)
+}
+
+pub fn parse_justfile_with_imports(path: &Path) -> Result<Vec<TaskItem>, std::io::Error> {
+    justfile::parse_with_imports(path)
 }

@@ -116,6 +116,16 @@ fn score_task(
 
 /// Lists tasks for the given runner by invoking its list command.
 fn list_tasks(runner: Runner) -> Result<Vec<TaskItem>, RtError> {
+    if runner == Runner::Justfile {
+        let current_dir = std::env::current_dir().map_err(RtError::Io)?;
+        let justfile = parser::find_justfile(&current_dir).ok_or_else(|| {
+            RtError::NoRunnerFound {
+                cwd: current_dir.clone(),
+            }
+        })?;
+        return parser::parse_justfile_with_imports(&justfile).map_err(RtError::Io);
+    }
+
     let mut last_status = 2;
     for args in list_command_variants(runner) {
         let current_dir = std::env::current_dir().map_err(RtError::Io)?;

@@ -66,6 +66,7 @@ Set Height 600
 Set Theme "Catppuccin Frappe"
 Set WindowBar Colorful
 Set Margin 30
+Set BorderRadius 10
 
 Type@800ms "rt" Enter Sleep 3s
 Down@300ms 4 Sleep 0.5s

@@ -18,7 +18,7 @@ Inspired by [antfu/ni](https://github.com/antfu/ni).
 
 ### rt is useful if you
 
-- don’t want to care whether a repo uses make, just, or task
+- don’t want to care whether a repo uses make, just, and others
 - want to select and run tasks with an interactive UI
 
 ### Install

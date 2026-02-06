@@ -48,7 +48,7 @@ pub fn select_task(runner: Runner) -> Result<Option<String>, RtError> {
         .with_page_size(10)
         .with_scorer(&move |input, option, string_value, idx| {
             let base = default_scorer(input, option, string_value, idx);
-            score_task(input, string_value, idx, items_len, base)
+            score_task(input, &option.name, string_value, idx, items_len, base)
         })
         .prompt()
     {
@@ -84,7 +84,8 @@ impl fmt::Display for TaskChoice {
 
 fn score_task(
     input: &str,
-    string_value: &str,
+    task_name: &str,
+    _string_value: &str,
     idx: usize,
     items_len: usize,
     base_score: Option<i64>,
@@ -95,9 +96,9 @@ fn score_task(
     }
 
     let input_lower = input.to_ascii_lowercase();
-    let value_lower = string_value.to_ascii_lowercase();
-    let exact = value_lower == input_lower;
-    let prefix = !exact && value_lower.starts_with(&input_lower);
+    let name_lower = task_name.to_ascii_lowercase();
+    let exact = name_lower == input_lower;
+    let prefix = !exact && name_lower.starts_with(&input_lower);
 
     let score = base_score.or_else(|| (exact || prefix).then_some(0))?;
     let boost = if exact {
@@ -168,8 +169,24 @@ mod tests {
     #[test]
     fn score_task_prefers_exact_over_prefix() {
         let items_len = 2;
-        let exact = score_task("format", "format", 1, items_len, Some(0)).unwrap();
-        let prefix = score_task("format", "format-rust", 0, items_len, Some(0)).unwrap();
+        let exact = score_task(
+            "format",
+            "format",
+            "format  - format code",
+            1,
+            items_len,
+            Some(0),
+        )
+        .unwrap();
+        let prefix = score_task(
+            "format",
+            "format-rust",
+            "format-rust  - format rust code",
+            0,
+            items_len,
+            Some(0),
+        )
+        .unwrap();
 
         assert!(exact > prefix);
     }
@@ -177,15 +194,16 @@ mod tests {
     #[test]
     fn score_task_filters_non_matches() {
         let items_len = 1;
-        let score = score_task("fmt", "build", 0, items_len, None);
+        let score = score_task("fmt", "build", "build  - compile", 0, items_len, None);
         assert!(score.is_none());
     }
 
     #[test]
     fn score_task_keeps_stable_order_for_equal_scores() {
         let items_len = 3;
-        let first = score_task("foo", "foobar", 0, items_len, Some(0)).unwrap();
-        let second = score_task("foo", "foobaz", 1, items_len, Some(0)).unwrap();
+        let first = score_task("foo", "foobar", "foobar  - first", 0, items_len, Some(0)).unwrap();
+        let second =
+            score_task("foo", "foobaz", "foobaz  - second", 1, items_len, Some(0)).unwrap();
 
         assert!(first > second);
     }

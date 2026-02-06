@@ -39,15 +39,23 @@ pub struct Cli {
 
 pub fn parse_cli() -> Cli {
     let raw = args().run();
-    let passthrough = match raw.rest.split_first() {
-        Some((first, rest)) if first == "--" => rest.to_vec(),
-        Some((_first, _rest)) => raw.rest,
-        None => Vec::new(),
-    };
+    Cli::from_raw(raw)
+}
 
-    Cli {
-        task: raw.task,
-        passthrough,
+impl Cli {
+    fn from_raw(raw: Args) -> Self {
+        Self {
+            task: raw.task,
+            passthrough: normalize_passthrough(raw.rest),
+        }
+    }
+}
+
+fn normalize_passthrough(rest: Vec<String>) -> Vec<String> {
+    match rest.split_first() {
+        Some((first, rest)) if first == "--" => rest.to_vec(),
+        Some((_first, _rest)) => rest,
+        None => Vec::new(),
     }
 }
 
@@ -137,4 +145,43 @@ pub enum RtError {
     Io(std::io::Error),
     #[error("failed to spawn command: {0}")]
     Spawn(std::io::Error),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn normalize_passthrough_strips_separator_only_when_first() {
+        assert_eq!(
+            normalize_passthrough(vec!["--".into(), "foo".into(), "--bar".into()]),
+            vec!["foo".to_string(), "--bar".to_string()]
+        );
+        assert_eq!(
+            normalize_passthrough(vec!["foo".into(), "--".into(), "bar".into()]),
+            vec!["foo".to_string(), "--".to_string(), "bar".to_string()]
+        );
+        assert!(normalize_passthrough(Vec::new()).is_empty());
+    }
+
+    #[test]
+    fn classify_error_returns_expected_exit_codes() {
+        let cwd = PathBuf::from(".");
+        assert_eq!(classify_error(&RtError::NoRunnerFound { cwd }), 3);
+        assert_eq!(classify_error(&RtError::ToolMissing { tool: "just" }), 3);
+        assert_eq!(classify_error(&RtError::NoTasks { tool: "just" }), 3);
+        assert_eq!(
+            classify_error(&RtError::ListFailed {
+                tool: "just",
+                status: 1
+            }),
+            3
+        );
+        assert_eq!(
+            classify_error(&RtError::Io(std::io::Error::from(
+                std::io::ErrorKind::Other
+            ))),
+            2
+        );
+    }
 }

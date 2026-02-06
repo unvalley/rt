@@ -2,6 +2,24 @@ use std::path::{Path, PathBuf};
 
 use crate::RtError;
 
+const RUNNER_CANDIDATES: [(&str, Runner); 15] = [
+    ("Justfile", Runner::Justfile),
+    ("justfile", Runner::Justfile),
+    ("Taskfile.yml", Runner::Taskfile),
+    ("taskfile.yml", Runner::Taskfile),
+    ("Taskfile.yaml", Runner::Taskfile),
+    ("taskfile.yaml", Runner::Taskfile),
+    ("Taskfile.dist.yml", Runner::Taskfile),
+    ("taskfile.dist.yml", Runner::Taskfile),
+    ("Taskfile.dist.yaml", Runner::Taskfile),
+    ("taskfile.dist.yaml", Runner::Taskfile),
+    ("maskfile.md", Runner::Maskfile),
+    ("Maskfile.md", Runner::Maskfile),
+    ("mise.toml", Runner::Mise),
+    ("Makefile.toml", Runner::CargoMake),
+    ("Makefile", Runner::Makefile),
+];
+
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum Runner {
     Justfile,
@@ -20,25 +38,7 @@ pub struct Detection {
 
 /// Detects the task runner used in the given directory.
 pub fn detect_runner(dir_path: &Path) -> Result<Detection, RtError> {
-    let candidates: [(&str, Runner); 15] = [
-        ("Justfile", Runner::Justfile),
-        ("justfile", Runner::Justfile),
-        ("Taskfile.yml", Runner::Taskfile),
-        ("taskfile.yml", Runner::Taskfile),
-        ("Taskfile.yaml", Runner::Taskfile),
-        ("taskfile.yaml", Runner::Taskfile),
-        ("Taskfile.dist.yml", Runner::Taskfile),
-        ("taskfile.dist.yml", Runner::Taskfile),
-        ("Taskfile.dist.yaml", Runner::Taskfile),
-        ("taskfile.dist.yaml", Runner::Taskfile),
-        ("maskfile.md", Runner::Maskfile),
-        ("Maskfile.md", Runner::Maskfile),
-        ("mise.toml", Runner::Mise),
-        ("Makefile.toml", Runner::CargoMake),
-        ("Makefile", Runner::Makefile),
-    ];
-
-    for (name, runner) in candidates {
+    for (name, runner) in RUNNER_CANDIDATES {
         let path = dir_path.join(name);
         if path.is_file() {
             return Ok(Detection {
@@ -55,28 +55,10 @@ pub fn detect_runner(dir_path: &Path) -> Result<Detection, RtError> {
 
 /// Detects all available runners in the given directory, in priority order.
 pub fn detect_runners(dir_path: &Path) -> Result<Vec<Detection>, RtError> {
-    let candidates: [(&str, Runner); 15] = [
-        ("Justfile", Runner::Justfile),
-        ("justfile", Runner::Justfile),
-        ("Taskfile.yml", Runner::Taskfile),
-        ("taskfile.yml", Runner::Taskfile),
-        ("Taskfile.yaml", Runner::Taskfile),
-        ("taskfile.yaml", Runner::Taskfile),
-        ("Taskfile.dist.yml", Runner::Taskfile),
-        ("taskfile.dist.yml", Runner::Taskfile),
-        ("Taskfile.dist.yaml", Runner::Taskfile),
-        ("taskfile.dist.yaml", Runner::Taskfile),
-        ("maskfile.md", Runner::Maskfile),
-        ("Maskfile.md", Runner::Maskfile),
-        ("mise.toml", Runner::Mise),
-        ("Makefile.toml", Runner::CargoMake),
-        ("Makefile", Runner::Makefile),
-    ];
-
     let mut seen = std::collections::HashSet::new();
     let mut detections = Vec::new();
 
-    for (name, runner) in candidates {
+    for (name, runner) in RUNNER_CANDIDATES {
         if seen.contains(&runner) {
             continue;
         }
@@ -204,5 +186,19 @@ mod tests {
                 Runner::Makefile,
             ]
         );
+    }
+
+    #[test]
+    fn detect_runners_deduplicates_case_variants() {
+        let dir = tempdir().unwrap();
+        touch(dir.path(), "Justfile");
+        touch(dir.path(), "justfile");
+        touch(dir.path(), "Taskfile.yml");
+        touch(dir.path(), "taskfile.yaml");
+
+        let detections = detect_runners(dir.path()).unwrap();
+        let runners: Vec<Runner> = detections.into_iter().map(|d| d.runner).collect();
+
+        assert_eq!(runners, vec![Runner::Justfile, Runner::Taskfile]);
     }
 }

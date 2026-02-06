@@ -35,3 +35,28 @@ pub fn ensure_tool(tool: &'static str) -> Result<(), RtError> {
         Err(_) => Err(RtError::ToolMissing { tool }),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn base_command_for_cargo_make_includes_make_subcommand() {
+        let command = base_command(Runner::CargoMake).unwrap();
+        assert_eq!(command.get_program(), "cargo");
+        let args: Vec<String> = command
+            .get_args()
+            .map(|arg| arg.to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(args, vec!["make".to_string()]);
+    }
+
+    #[test]
+    fn ensure_tool_returns_error_for_missing_binary() {
+        let err = ensure_tool("__rt_missing_tool_for_test__").unwrap_err();
+        match err {
+            RtError::ToolMissing { tool } => assert_eq!(tool, "__rt_missing_tool_for_test__"),
+            other => panic!("unexpected error: {other:?}"),
+        }
+    }
+}

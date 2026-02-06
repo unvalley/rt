@@ -201,10 +201,9 @@ mod tests {
     #[test]
     fn score_task_keeps_stable_order_for_equal_scores() {
         let items_len = 3;
-        let first = score_task("foo", "foobar", "foobar  - first", 0, items_len, Some(0))
-            .unwrap();
-        let second = score_task("foo", "foobaz", "foobaz  - second", 1, items_len, Some(0))
-            .unwrap();
+        let first = score_task("foo", "foobar", "foobar  - first", 0, items_len, Some(0)).unwrap();
+        let second =
+            score_task("foo", "foobaz", "foobaz  - second", 1, items_len, Some(0)).unwrap();
 
         assert!(first > second);
     }

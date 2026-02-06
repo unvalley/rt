@@ -58,6 +58,8 @@ If a task runner is found, rt shows an interactive task selector:
 rt <task> [-- args...]
 ```
 
+Executed commands are appended to shell history as a best effort when `HISTFILE` is available.
+
 ### Why?
 
 There are many task runners available, and different projects use different ones.

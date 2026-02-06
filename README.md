@@ -1,13 +1,11 @@
-## rt : runs tasks right
-
-One command to run tasks across task runners.
+A CLI to run tasks interactively across different task runners.
 Inspired by [antfu/ni](https://github.com/antfu/ni).
 
 ![demo](https://github.com/user-attachments/assets/6e703525-3f52-4303-b679-ee1abde375db)
 
 ### What it does
 
-`rt` looks for task runer files below, and runs the appropriate task runner command.
+`rt` looks for files below, and provide a way to execute them selectively
 
 - make: `Makefile`
 - just: `justfile` / `Justfile`
@@ -63,3 +61,4 @@ rt <task> [-- args...]
 ### Why?
 
 There are many task runners available, and different projects use different ones.
+And, I don't like shell script.

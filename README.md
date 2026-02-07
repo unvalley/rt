@@ -22,6 +22,10 @@ Inspired by [antfu/ni](https://github.com/antfu/ni).
 ### Install
 
 ```sh
+brew install unvalley/tap/rt
+```
+
+```sh
 cargo install rt-cli
 ```
 
@@ -29,10 +33,7 @@ cargo install rt-cli
 cargo binstall rt-cli
 ```
 
-Planned:
-
-- homebrew
-- nix
+Planned: nix, homebrew(core, after requirements met), others
 
 ### `rt`: run tasks selectively
 

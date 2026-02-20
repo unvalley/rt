@@ -41,6 +41,10 @@ Planned: nix, homebrew(core, after requirements met), others
 rt
 ```
 
+```sh
+rt --args
+```
+
 If a task runner is found, rt shows an interactive task selector:
 
 ```sh
@@ -53,10 +57,13 @@ If a task runner is found, rt shows an interactive task selector:
 [↑↓ to move, enter to select, type to filter]
 ```
 
+After selecting a task, rt prompts required parameters when defined (for example, in `justfile` recipes).
+Add `--args` if you also want to enter optional arguments interactively.
+
 ### `rt <task>`: run specific task
 
 ```sh
-rt <task> [-- args...]
+rt [--args] <task> [-- args...]
 ```
 
 ### Why?

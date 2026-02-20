@@ -1,6 +1,7 @@
 mod detect;
 mod exec;
 mod parser;
+mod task_args;
 mod tasks;
 
 use bpaf::Bpaf;
@@ -24,15 +25,19 @@ fn main() {
 #[derive(Debug, Clone, Bpaf)]
 #[bpaf(options, version)]
 struct Args {
+    /// Prompt for task arguments interactively.
+    #[bpaf(long("args"), switch)]
+    prompt_args: bool,
     /// Task name to run in your task runner files (e.g. `build`, `test`).
     #[bpaf(positional("task"))]
     task: Option<String>,
-    #[bpaf(positional("args"), many)]
+    #[bpaf(positional("passthrough"), many)]
     rest: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
 pub struct Cli {
+    pub prompt_args: bool,
     pub task: Option<String>,
     pub passthrough: Vec<String>,
 }
@@ -45,6 +50,7 @@ pub fn parse_cli() -> Cli {
 impl Cli {
     fn from_raw(raw: Args) -> Self {
         Self {
+            prompt_args: raw.prompt_args,
             task: raw.task,
             passthrough: normalize_passthrough(raw.rest),
         }
@@ -65,26 +71,145 @@ fn run(cli: Cli) -> Result<i32, RtError> {
 
     if let Some(task) = cli.task {
         let detection = detect::detect_runner(&cwd)?;
-        return exec::run(detection.runner, &task, &cli.passthrough);
+        let passthrough =
+            match collect_passthrough(&detection, &task, &cli.passthrough, cli.prompt_args)? {
+                Some(args) => args,
+                None => return Ok(0),
+            };
+        return exec::run(detection.runner, &task, &passthrough);
     }
 
     let detections = detect::detect_runners(&cwd)?;
-    let runner = if detections.len() == 1 {
-        Some(detections[0].runner)
+    let detection = if detections.len() == 1 {
+        detections.into_iter().next()
     } else {
         select_runner(detections)?
     };
 
-    let runner = match runner {
-        Some(runner) => runner,
+    let detection = match detection {
+        Some(detection) => detection,
         None => return Ok(0),
     };
+    let runner = detection.runner;
 
     let task = tasks::select_task(runner)?;
     match task {
-        Some(task) => exec::run(runner, &task, &cli.passthrough),
+        Some(task) => {
+            let passthrough =
+                match collect_passthrough(&detection, &task, &cli.passthrough, cli.prompt_args)? {
+                    Some(args) => args,
+                    None => return Ok(0),
+                };
+            exec::run(runner, &task, &passthrough)
+        }
         None => Ok(0),
     }
+}
+
+fn collect_passthrough(
+    detection: &detect::Detection,
+    task: &str,
+    cli_passthrough: &[String],
+    prompt_optional_args: bool,
+) -> Result<Option<Vec<String>>, RtError> {
+    let required = task_args::required_args_for_task(detection, task).map_err(RtError::Io)?;
+    let plan = build_passthrough_plan(&required, cli_passthrough, prompt_optional_args);
+    let mut passthrough = plan.initial_passthrough;
+
+    if plan.missing_required.is_empty() && !plan.prompt_optional_args {
+        return Ok(Some(passthrough));
+    }
+
+    for name in &plan.missing_required {
+        let value = match prompt_required_argument(detection.runner, task, name, &passthrough)? {
+            Some(value) => value,
+            None => return Ok(None),
+        };
+        passthrough.push(value);
+    }
+
+    if plan.prompt_optional_args {
+        let optional = match prompt_optional_passthrough(detection.runner, task, &passthrough)? {
+            Some(args) => args,
+            None => return Ok(None),
+        };
+        passthrough.extend(optional);
+    }
+
+    Ok(Some(passthrough))
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct PassthroughPlan {
+    initial_passthrough: Vec<String>,
+    missing_required: Vec<String>,
+    prompt_optional_args: bool,
+}
+
+fn build_passthrough_plan(
+    required: &[String],
+    cli_passthrough: &[String],
+    prompt_optional_args: bool,
+) -> PassthroughPlan {
+    let start = cli_passthrough.len().min(required.len());
+    PassthroughPlan {
+        initial_passthrough: cli_passthrough.to_vec(),
+        missing_required: required[start..].to_vec(),
+        prompt_optional_args,
+    }
+}
+
+fn prompt_required_argument(
+    runner: detect::Runner,
+    task: &str,
+    name: &str,
+    current: &[String],
+) -> Result<Option<String>, RtError> {
+    loop {
+        let message = format!("Value for required arg {name}");
+        let preview = exec::preview_command(runner, task, current);
+        match inquire::Text::new(&message)
+            .with_help_message(&format!("Current: $ {preview}"))
+            .prompt()
+        {
+            Ok(input) => {
+                let trimmed = input.trim();
+                if trimmed.is_empty() {
+                    eprintln!("Argument `{name}` is required. Enter a value or cancel.");
+                    continue;
+                }
+                return Ok(Some(trimmed.to_string()));
+            }
+            Err(InquireError::OperationCanceled | InquireError::OperationInterrupted) => {
+                return Ok(None);
+            }
+            Err(err) => return Err(RtError::Prompt(err)),
+        }
+    }
+}
+
+fn prompt_optional_passthrough(
+    runner: detect::Runner,
+    task: &str,
+    current: &[String],
+) -> Result<Option<Vec<String>>, RtError> {
+    let preview = exec::preview_command(runner, task, current);
+    let message = format!("Additional arguments for {task} (optional, space-separated)");
+    match inquire::Text::new(&message)
+        .with_help_message(&format!("Current: $ {preview}"))
+        .prompt()
+    {
+        Ok(input) => Ok(Some(split_interactive_passthrough(&input))),
+        Err(InquireError::OperationCanceled | InquireError::OperationInterrupted) => Ok(None),
+        Err(err) => Err(RtError::Prompt(err)),
+    }
+}
+
+fn split_interactive_passthrough(input: &str) -> Vec<String> {
+    input
+        .split_whitespace()
+        .map(|arg| arg.to_string())
+        .collect()
 }
 
 fn classify_error(err: &RtError) -> i32 {
@@ -98,32 +223,34 @@ fn classify_error(err: &RtError) -> i32 {
 }
 
 struct RunnerItem {
-    runner: detect::Runner,
-    runner_file: PathBuf,
+    detection: detect::Detection,
 }
 
 impl fmt::Display for RunnerItem {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let filename = self
+            .detection
             .runner_file
             .file_name()
             .map(|name| name.to_string_lossy().into_owned())
-            .unwrap_or_else(|| self.runner_file.to_string_lossy().into_owned());
-        write!(f, "{} ({})", filename, detect::runner_command(self.runner))
+            .unwrap_or_else(|| self.detection.runner_file.to_string_lossy().into_owned());
+        write!(
+            f,
+            "{} ({})",
+            filename,
+            detect::runner_command(self.detection.runner)
+        )
     }
 }
 
-fn select_runner(detections: Vec<detect::Detection>) -> Result<Option<detect::Runner>, RtError> {
+fn select_runner(detections: Vec<detect::Detection>) -> Result<Option<detect::Detection>, RtError> {
     let items: Vec<RunnerItem> = detections
         .into_iter()
-        .map(|detection| RunnerItem {
-            runner: detection.runner,
-            runner_file: detection.runner_file,
-        })
+        .map(|detection| RunnerItem { detection })
         .collect();
 
     match inquire::Select::new("Select runner", items).prompt() {
-        Ok(item) => Ok(Some(item.runner)),
+        Ok(item) => Ok(Some(item.detection)),
         Err(InquireError::OperationCanceled | InquireError::OperationInterrupted) => Ok(None),
         Err(err) => Err(RtError::Prompt(err)),
     }
@@ -182,6 +309,90 @@ mod tests {
                 std::io::ErrorKind::Other
             ))),
             2
+        );
+    }
+
+    #[test]
+    fn split_interactive_passthrough_handles_whitespace() {
+        assert_eq!(
+            split_interactive_passthrough("foo  bar --baz"),
+            vec!["foo".to_string(), "bar".to_string(), "--baz".to_string()]
+        );
+        assert!(split_interactive_passthrough("").is_empty());
+        assert!(split_interactive_passthrough("   ").is_empty());
+    }
+
+    #[test]
+    fn prompt_passthrough_prefers_cli_passthrough() {
+        let detection = detect::Detection {
+            runner: detect::Runner::Taskfile,
+            runner_file: PathBuf::from("Taskfile.yml"),
+        };
+        let passthrough = vec!["--flag".to_string(), "value".to_string()];
+        let result = collect_passthrough(&detection, "build", &passthrough, false)
+            .unwrap()
+            .unwrap();
+        assert_eq!(result, passthrough);
+    }
+
+    #[test]
+    fn cli_from_raw_parses_args_flag_and_passthrough() {
+        let raw = Args {
+            prompt_args: true,
+            task: Some("build".to_string()),
+            rest: vec!["--".to_string(), "--env".to_string(), "prod".to_string()],
+        };
+        let cli = Cli::from_raw(raw);
+        assert!(cli.prompt_args);
+        assert_eq!(cli.task.as_deref(), Some("build"));
+        assert_eq!(
+            cli.passthrough,
+            vec!["--env".to_string(), "prod".to_string()]
+        );
+    }
+
+    #[test]
+    fn build_passthrough_plan_without_args_flag_and_no_required() {
+        let required = Vec::<String>::new();
+        let cli = vec!["--verbose".to_string()];
+        let plan = build_passthrough_plan(&required, &cli, false);
+        assert_eq!(
+            plan,
+            PassthroughPlan {
+                initial_passthrough: vec!["--verbose".to_string()],
+                missing_required: Vec::new(),
+                prompt_optional_args: false,
+            }
+        );
+    }
+
+    #[test]
+    fn build_passthrough_plan_with_args_flag_prompts_optional() {
+        let required = Vec::<String>::new();
+        let cli = vec!["--verbose".to_string()];
+        let plan = build_passthrough_plan(&required, &cli, true);
+        assert_eq!(
+            plan,
+            PassthroughPlan {
+                initial_passthrough: vec!["--verbose".to_string()],
+                missing_required: Vec::new(),
+                prompt_optional_args: true,
+            }
+        );
+    }
+
+    #[test]
+    fn build_passthrough_plan_detects_missing_required_args() {
+        let required = vec!["ENV".to_string(), "TARGET".to_string()];
+        let cli = vec!["prod".to_string()];
+        let plan = build_passthrough_plan(&required, &cli, false);
+        assert_eq!(
+            plan,
+            PassthroughPlan {
+                initial_passthrough: vec!["prod".to_string()],
+                missing_required: vec!["TARGET".to_string()],
+                prompt_optional_args: false,
+            }
         );
     }
 }

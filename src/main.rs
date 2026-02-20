@@ -1,6 +1,7 @@
 mod detect;
 mod exec;
 mod parser;
+mod task_args;
 mod tasks;
 
 use bpaf::Bpaf;
@@ -69,22 +70,110 @@ fn run(cli: Cli) -> Result<i32, RtError> {
     }
 
     let detections = detect::detect_runners(&cwd)?;
-    let runner = if detections.len() == 1 {
-        Some(detections[0].runner)
+    let detection = if detections.len() == 1 {
+        detections.into_iter().next()
     } else {
         select_runner(detections)?
     };
 
-    let runner = match runner {
-        Some(runner) => runner,
+    let detection = match detection {
+        Some(detection) => detection,
         None => return Ok(0),
     };
+    let runner = detection.runner;
 
     let task = tasks::select_task(runner)?;
     match task {
-        Some(task) => exec::run(runner, &task, &cli.passthrough),
+        Some(task) => {
+            let passthrough = match prompt_passthrough(&detection, &task, &cli.passthrough)? {
+                Some(args) => args,
+                None => return Ok(0),
+            };
+            exec::run(runner, &task, &passthrough)
+        }
         None => Ok(0),
     }
+}
+
+fn prompt_passthrough(
+    detection: &detect::Detection,
+    task: &str,
+    cli_passthrough: &[String],
+) -> Result<Option<Vec<String>>, RtError> {
+    if !cli_passthrough.is_empty() {
+        return Ok(Some(cli_passthrough.to_vec()));
+    }
+
+    let mut passthrough = Vec::new();
+    let required = task_args::required_args_for_task(detection, task).map_err(RtError::Io)?;
+    for name in required {
+        let value = match prompt_required_argument(detection.runner, task, &name, &passthrough)? {
+            Some(value) => value,
+            None => return Ok(None),
+        };
+        passthrough.push(value);
+    }
+
+    let optional = match prompt_optional_passthrough(detection.runner, task, &passthrough)? {
+        Some(args) => args,
+        None => return Ok(None),
+    };
+    passthrough.extend(optional);
+
+    Ok(Some(passthrough))
+}
+
+fn prompt_required_argument(
+    runner: detect::Runner,
+    task: &str,
+    name: &str,
+    current: &[String],
+) -> Result<Option<String>, RtError> {
+    loop {
+        let message = format!("Value for required arg {name}");
+        let preview = exec::preview_command(runner, task, current);
+        match inquire::Text::new(&message)
+            .with_help_message(&format!("Current: $ {preview}"))
+            .prompt()
+        {
+            Ok(input) => {
+                let trimmed = input.trim();
+                if trimmed.is_empty() {
+                    eprintln!("Argument `{name}` is required. Enter a value or cancel.");
+                    continue;
+                }
+                return Ok(Some(trimmed.to_string()));
+            }
+            Err(InquireError::OperationCanceled | InquireError::OperationInterrupted) => {
+                return Ok(None);
+            }
+            Err(err) => return Err(RtError::Prompt(err)),
+        }
+    }
+}
+
+fn prompt_optional_passthrough(
+    runner: detect::Runner,
+    task: &str,
+    current: &[String],
+) -> Result<Option<Vec<String>>, RtError> {
+    let preview = exec::preview_command(runner, task, current);
+    let message = format!("Additional arguments for {task} (optional, space-separated)");
+    match inquire::Text::new(&message)
+        .with_help_message(&format!("Current: $ {preview}"))
+        .prompt()
+    {
+        Ok(input) => Ok(Some(split_interactive_passthrough(&input))),
+        Err(InquireError::OperationCanceled | InquireError::OperationInterrupted) => Ok(None),
+        Err(err) => Err(RtError::Prompt(err)),
+    }
+}
+
+fn split_interactive_passthrough(input: &str) -> Vec<String> {
+    input
+        .split_whitespace()
+        .map(|arg| arg.to_string())
+        .collect()
 }
 
 fn classify_error(err: &RtError) -> i32 {
@@ -98,32 +187,34 @@ fn classify_error(err: &RtError) -> i32 {
 }
 
 struct RunnerItem {
-    runner: detect::Runner,
-    runner_file: PathBuf,
+    detection: detect::Detection,
 }
 
 impl fmt::Display for RunnerItem {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let filename = self
+            .detection
             .runner_file
             .file_name()
             .map(|name| name.to_string_lossy().into_owned())
-            .unwrap_or_else(|| self.runner_file.to_string_lossy().into_owned());
-        write!(f, "{} ({})", filename, detect::runner_command(self.runner))
+            .unwrap_or_else(|| self.detection.runner_file.to_string_lossy().into_owned());
+        write!(
+            f,
+            "{} ({})",
+            filename,
+            detect::runner_command(self.detection.runner)
+        )
     }
 }
 
-fn select_runner(detections: Vec<detect::Detection>) -> Result<Option<detect::Runner>, RtError> {
+fn select_runner(detections: Vec<detect::Detection>) -> Result<Option<detect::Detection>, RtError> {
     let items: Vec<RunnerItem> = detections
         .into_iter()
-        .map(|detection| RunnerItem {
-            runner: detection.runner,
-            runner_file: detection.runner_file,
-        })
+        .map(|detection| RunnerItem { detection })
         .collect();
 
     match inquire::Select::new("Select runner", items).prompt() {
-        Ok(item) => Ok(Some(item.runner)),
+        Ok(item) => Ok(Some(item.detection)),
         Err(InquireError::OperationCanceled | InquireError::OperationInterrupted) => Ok(None),
         Err(err) => Err(RtError::Prompt(err)),
     }
@@ -183,5 +274,28 @@ mod tests {
             ))),
             2
         );
+    }
+
+    #[test]
+    fn split_interactive_passthrough_handles_whitespace() {
+        assert_eq!(
+            split_interactive_passthrough("foo  bar --baz"),
+            vec!["foo".to_string(), "bar".to_string(), "--baz".to_string()]
+        );
+        assert!(split_interactive_passthrough("").is_empty());
+        assert!(split_interactive_passthrough("   ").is_empty());
+    }
+
+    #[test]
+    fn prompt_passthrough_prefers_cli_passthrough() {
+        let detection = detect::Detection {
+            runner: detect::Runner::Taskfile,
+            runner_file: PathBuf::from("Taskfile.yml"),
+        };
+        let passthrough = vec!["--flag".to_string(), "value".to_string()];
+        let result = prompt_passthrough(&detection, "build", &passthrough)
+            .unwrap()
+            .unwrap();
+        assert_eq!(result, passthrough);
     }
 }

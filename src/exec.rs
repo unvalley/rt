@@ -9,12 +9,9 @@ pub fn run(runner: Runner, task: &str, passthrough: &[String]) -> Result<i32, Rt
         command.arg("run");
     }
     let current_dir = std::env::current_dir().map_err(RtError::Io)?;
-    let status = command
-        .arg(task)
-        .args(passthrough)
-        .current_dir(current_dir)
-        .status()
-        .map_err(RtError::Spawn)?;
+    command.arg(task).args(passthrough).current_dir(current_dir);
+    eprintln!("$ {}", preview_command(runner, task, passthrough));
+    let status = command.status().map_err(RtError::Spawn)?;
 
     Ok(status.code().unwrap_or(2))
 }
@@ -34,6 +31,41 @@ pub fn ensure_tool(tool: &'static str) -> Result<(), RtError> {
         Ok(_) => Ok(()),
         Err(_) => Err(RtError::ToolMissing { tool }),
     }
+}
+
+pub fn preview_command(runner: Runner, task: &str, passthrough: &[String]) -> String {
+    let mut parts = Vec::new();
+    parts.push(runner_command(runner).to_string());
+    if runner == Runner::CargoMake {
+        parts.push("make".to_string());
+    }
+    if runner == Runner::Mise {
+        parts.push("run".to_string());
+    }
+    parts.push(task.to_string());
+    parts.extend(passthrough.iter().cloned());
+
+    parts
+        .into_iter()
+        .map(|part| quote_shell_arg(&part))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn quote_shell_arg(value: &str) -> String {
+    if value.is_empty() {
+        return "''".to_string();
+    }
+    if value.chars().any(|c| {
+        c.is_whitespace()
+            || matches!(
+                c,
+                '\'' | '"' | '\\' | '$' | '`' | '!' | '&' | '|' | ';' | '<' | '>'
+            )
+    }) {
+        return format!("'{}'", value.replace('\'', "'\\''"));
+    }
+    value.to_string()
 }
 
 #[cfg(test)]
@@ -58,5 +90,37 @@ mod tests {
             RtError::ToolMissing { tool } => assert_eq!(tool, "__rt_missing_tool_for_test__"),
             other => panic!("unexpected error: {other:?}"),
         }
+    }
+
+    #[test]
+    fn format_command_preview_renders_simple_command() {
+        let preview = preview_command(Runner::Justfile, "test", &["--verbose".to_string()]);
+        assert_eq!(preview, "just test --verbose");
+    }
+
+    #[test]
+    fn format_command_preview_quotes_special_args() {
+        let preview = preview_command(
+            Runner::Justfile,
+            "test",
+            &[
+                "hello world".to_string(),
+                "a'b".to_string(),
+                "$HOME".to_string(),
+            ],
+        );
+        assert_eq!(preview, "just test 'hello world' 'a'\\''b' '$HOME'");
+    }
+
+    #[test]
+    fn preview_command_handles_runner_specific_prefixes() {
+        assert_eq!(
+            preview_command(Runner::Mise, "build", &[]),
+            "mise run build"
+        );
+        assert_eq!(
+            preview_command(Runner::CargoMake, "build", &[]),
+            "cargo make build"
+        );
     }
 }

@@ -53,6 +53,12 @@ If a task runner is found, rt shows an interactive task selector:
 [↑↓ to move, enter to select, type to filter]
 ```
 
+After selecting a task, rt asks for arguments interactively.
+For `justfile`, required recipe parameters are prompted first.
+Press Enter on the additional-args prompt to run without extra arguments.
+While entering arguments, rt shows the current command preview.
+rt also prints the exact command it is about to run.
+
 ### `rt <task>`: run specific task
 
 ```sh

@@ -121,7 +121,7 @@ fn collect_passthrough(
     }
 
     for name in &plan.missing_required {
-        let value = match prompt_required_argument(detection.runner, task, &name, &passthrough)? {
+        let value = match prompt_required_argument(detection.runner, task, name, &passthrough)? {
             Some(value) => value,
             None => return Ok(None),
         };

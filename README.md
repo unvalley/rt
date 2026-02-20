@@ -41,6 +41,10 @@ Planned: nix, homebrew(core, after requirements met), others
 rt
 ```
 
+```sh
+rt --args
+```
+
 If a task runner is found, rt shows an interactive task selector:
 
 ```sh
@@ -53,16 +57,16 @@ If a task runner is found, rt shows an interactive task selector:
 [↑↓ to move, enter to select, type to filter]
 ```
 
-After selecting a task, rt asks for arguments interactively.
-For `justfile`, required recipe parameters are prompted first.
-Press Enter on the additional-args prompt to run without extra arguments.
+After selecting a task, rt prompts required parameters when they are defined (for example, in `justfile` recipes).
+Use `rt --args` when you also want to enter additional optional arguments interactively.
+Press Enter on the optional-args prompt to run without extra arguments.
 While entering arguments, rt shows the current command preview.
 rt also prints the exact command it is about to run.
 
 ### `rt <task>`: run specific task
 
 ```sh
-rt <task> [-- args...]
+rt [--args] <task> [-- args...]
 ```
 
 ### Why?

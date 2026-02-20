@@ -25,15 +25,19 @@ fn main() {
 #[derive(Debug, Clone, Bpaf)]
 #[bpaf(options, version)]
 struct Args {
+    /// Prompt for task arguments interactively.
+    #[bpaf(long("args"), switch)]
+    prompt_args: bool,
     /// Task name to run in your task runner files (e.g. `build`, `test`).
     #[bpaf(positional("task"))]
     task: Option<String>,
-    #[bpaf(positional("args"), many)]
+    #[bpaf(positional("passthrough"), many)]
     rest: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
 pub struct Cli {
+    pub prompt_args: bool,
     pub task: Option<String>,
     pub passthrough: Vec<String>,
 }
@@ -46,6 +50,7 @@ pub fn parse_cli() -> Cli {
 impl Cli {
     fn from_raw(raw: Args) -> Self {
         Self {
+            prompt_args: raw.prompt_args,
             task: raw.task,
             passthrough: normalize_passthrough(raw.rest),
         }
@@ -66,7 +71,12 @@ fn run(cli: Cli) -> Result<i32, RtError> {
 
     if let Some(task) = cli.task {
         let detection = detect::detect_runner(&cwd)?;
-        return exec::run(detection.runner, &task, &cli.passthrough);
+        let passthrough =
+            match collect_passthrough(&detection, &task, &cli.passthrough, cli.prompt_args)? {
+                Some(args) => args,
+                None => return Ok(0),
+            };
+        return exec::run(detection.runner, &task, &passthrough);
     }
 
     let detections = detect::detect_runners(&cwd)?;
@@ -85,28 +95,32 @@ fn run(cli: Cli) -> Result<i32, RtError> {
     let task = tasks::select_task(runner)?;
     match task {
         Some(task) => {
-            let passthrough = match prompt_passthrough(&detection, &task, &cli.passthrough)? {
-                Some(args) => args,
-                None => return Ok(0),
-            };
+            let passthrough =
+                match collect_passthrough(&detection, &task, &cli.passthrough, cli.prompt_args)? {
+                    Some(args) => args,
+                    None => return Ok(0),
+                };
             exec::run(runner, &task, &passthrough)
         }
         None => Ok(0),
     }
 }
 
-fn prompt_passthrough(
+fn collect_passthrough(
     detection: &detect::Detection,
     task: &str,
     cli_passthrough: &[String],
+    prompt_optional_args: bool,
 ) -> Result<Option<Vec<String>>, RtError> {
-    if !cli_passthrough.is_empty() {
-        return Ok(Some(cli_passthrough.to_vec()));
+    let required = task_args::required_args_for_task(detection, task).map_err(RtError::Io)?;
+    let plan = build_passthrough_plan(&required, cli_passthrough, prompt_optional_args);
+    let mut passthrough = plan.initial_passthrough;
+
+    if plan.missing_required.is_empty() && !plan.prompt_optional_args {
+        return Ok(Some(passthrough));
     }
 
-    let mut passthrough = Vec::new();
-    let required = task_args::required_args_for_task(detection, task).map_err(RtError::Io)?;
-    for name in required {
+    for name in &plan.missing_required {
         let value = match prompt_required_argument(detection.runner, task, &name, &passthrough)? {
             Some(value) => value,
             None => return Ok(None),
@@ -114,13 +128,35 @@ fn prompt_passthrough(
         passthrough.push(value);
     }
 
-    let optional = match prompt_optional_passthrough(detection.runner, task, &passthrough)? {
-        Some(args) => args,
-        None => return Ok(None),
-    };
-    passthrough.extend(optional);
+    if plan.prompt_optional_args {
+        let optional = match prompt_optional_passthrough(detection.runner, task, &passthrough)? {
+            Some(args) => args,
+            None => return Ok(None),
+        };
+        passthrough.extend(optional);
+    }
 
     Ok(Some(passthrough))
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct PassthroughPlan {
+    initial_passthrough: Vec<String>,
+    missing_required: Vec<String>,
+    prompt_optional_args: bool,
+}
+
+fn build_passthrough_plan(
+    required: &[String],
+    cli_passthrough: &[String],
+    prompt_optional_args: bool,
+) -> PassthroughPlan {
+    let start = cli_passthrough.len().min(required.len());
+    PassthroughPlan {
+        initial_passthrough: cli_passthrough.to_vec(),
+        missing_required: required[start..].to_vec(),
+        prompt_optional_args,
+    }
 }
 
 fn prompt_required_argument(
@@ -293,9 +329,70 @@ mod tests {
             runner_file: PathBuf::from("Taskfile.yml"),
         };
         let passthrough = vec!["--flag".to_string(), "value".to_string()];
-        let result = prompt_passthrough(&detection, "build", &passthrough)
+        let result = collect_passthrough(&detection, "build", &passthrough, false)
             .unwrap()
             .unwrap();
         assert_eq!(result, passthrough);
+    }
+
+    #[test]
+    fn cli_from_raw_parses_args_flag_and_passthrough() {
+        let raw = Args {
+            prompt_args: true,
+            task: Some("build".to_string()),
+            rest: vec!["--".to_string(), "--env".to_string(), "prod".to_string()],
+        };
+        let cli = Cli::from_raw(raw);
+        assert!(cli.prompt_args);
+        assert_eq!(cli.task.as_deref(), Some("build"));
+        assert_eq!(
+            cli.passthrough,
+            vec!["--env".to_string(), "prod".to_string()]
+        );
+    }
+
+    #[test]
+    fn build_passthrough_plan_without_args_flag_and_no_required() {
+        let required = Vec::<String>::new();
+        let cli = vec!["--verbose".to_string()];
+        let plan = build_passthrough_plan(&required, &cli, false);
+        assert_eq!(
+            plan,
+            PassthroughPlan {
+                initial_passthrough: vec!["--verbose".to_string()],
+                missing_required: Vec::new(),
+                prompt_optional_args: false,
+            }
+        );
+    }
+
+    #[test]
+    fn build_passthrough_plan_with_args_flag_prompts_optional() {
+        let required = Vec::<String>::new();
+        let cli = vec!["--verbose".to_string()];
+        let plan = build_passthrough_plan(&required, &cli, true);
+        assert_eq!(
+            plan,
+            PassthroughPlan {
+                initial_passthrough: vec!["--verbose".to_string()],
+                missing_required: Vec::new(),
+                prompt_optional_args: true,
+            }
+        );
+    }
+
+    #[test]
+    fn build_passthrough_plan_detects_missing_required_args() {
+        let required = vec!["ENV".to_string(), "TARGET".to_string()];
+        let cli = vec!["prod".to_string()];
+        let plan = build_passthrough_plan(&required, &cli, false);
+        assert_eq!(
+            plan,
+            PassthroughPlan {
+                initial_passthrough: vec!["prod".to_string()],
+                missing_required: vec!["TARGET".to_string()],
+                prompt_optional_args: false,
+            }
+        );
     }
 }

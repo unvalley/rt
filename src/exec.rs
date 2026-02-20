@@ -9,9 +9,12 @@ pub fn run(runner: Runner, task: &str, passthrough: &[String]) -> Result<i32, Rt
         command.arg("run");
     }
     let current_dir = std::env::current_dir().map_err(RtError::Io)?;
-    command.arg(task).args(passthrough).current_dir(current_dir);
-    eprintln!("$ {}", preview_command(runner, task, passthrough));
-    let status = command.status().map_err(RtError::Spawn)?;
+    let status = command
+        .arg(task)
+        .args(passthrough)
+        .current_dir(current_dir)
+        .status()
+        .map_err(RtError::Spawn)?;
 
     Ok(status.code().unwrap_or(2))
 }

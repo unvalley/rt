@@ -72,28 +72,13 @@ rt [--args] <task> [-- args...]
 rt --history
 ```
 
-`rt --history` shows recent history entries as:
+Shows recent history as `command + timestamp`, then re-runs the selected command.
 
-- command
-- timestamp
+History file (JSONL) path priority:
 
-Then it re-runs the selected command.
-
-History is stored as JSONL (`version: 2`) with these fields:
-
-- `version`
-- `timestamp`
-- `program`
-- `args`
-- `working_directory`
-- `exit_code`
-
-Path priority:
-
-- If `XDG_STATE_HOME` is set: `$XDG_STATE_HOME/rt/history.jsonl`
-- On Windows: `%LOCALAPPDATA%/rt/history.jsonl`
-- On Windows (fallback): `%USERPROFILE%/AppData/Local/rt/history.jsonl`
-- On Unix-like systems: `~/.local/state/rt/history.jsonl`
+- `XDG_STATE_HOME/rt/history.jsonl` (if `XDG_STATE_HOME` is set)
+- Windows: `%LOCALAPPDATA%/rt/history.jsonl` (fallback: `%USERPROFILE%/AppData/Local/rt/history.jsonl`)
+- Unix-like: `~/.local/state/rt/history.jsonl`
 - Fallback: `~/.rt/history.jsonl`
 - Last fallback: `./.rt/history.jsonl`
 

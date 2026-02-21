@@ -32,9 +32,6 @@ struct Args {
     /// Select a previously executed command from rt history and run it.
     #[bpaf(long("history"), switch)]
     history: bool,
-    /// Show verbose logs.
-    #[bpaf(long("verbose"), switch)]
-    verbose: bool,
     /// Task name to run in your task runner files (e.g. `build`, `test`).
     #[bpaf(positional("task"))]
     task: Option<String>,
@@ -46,7 +43,6 @@ struct Args {
 pub struct Cli {
     pub prompt_args: bool,
     pub history: bool,
-    pub verbose: bool,
     pub task: Option<String>,
     pub passthrough: Vec<String>,
 }
@@ -61,7 +57,6 @@ impl Cli {
         Self {
             prompt_args: raw.prompt_args,
             history: raw.history,
-            verbose: raw.verbose,
             task: raw.task,
             passthrough: normalize_passthrough(raw.rest),
         }
@@ -80,7 +75,7 @@ fn normalize_passthrough(rest: Vec<String>) -> Vec<String> {
 fn run(cli: Cli) -> Result<i32, RtError> {
     let cwd = std::env::current_dir().map_err(RtError::Io)?;
     if cli.history {
-        return rerun_from_history(&cwd, cli.verbose);
+        return rerun_from_history(&cwd);
     }
 
     if let Some(task) = cli.task {
@@ -90,7 +85,7 @@ fn run(cli: Cli) -> Result<i32, RtError> {
                 Some(args) => args,
                 None => return Ok(0),
             };
-        return execute_and_record(&detection, &task, &passthrough, &cwd, cli.verbose);
+        return execute_and_record(&detection, &task, &passthrough, &cwd);
     }
 
     let detections = detect::detect_runners(&cwd)?;
@@ -114,7 +109,7 @@ fn run(cli: Cli) -> Result<i32, RtError> {
                     Some(args) => args,
                     None => return Ok(0),
                 };
-            execute_and_record(&detection, &task, &passthrough, &cwd, cli.verbose)
+            execute_and_record(&detection, &task, &passthrough, &cwd)
         }
         None => Ok(0),
     }
@@ -140,13 +135,10 @@ impl fmt::Display for HistoryChoice {
     }
 }
 
-fn rerun_from_history(fallback_cwd: &Path, verbose: bool) -> Result<i32, RtError> {
+fn rerun_from_history(fallback_cwd: &Path) -> Result<i32, RtError> {
     let records = history::read_default().map_err(RtError::Io)?;
     let choices = build_history_choices(&records, HISTORY_SELECT_LIMIT);
     if choices.is_empty() {
-        if verbose {
-            eprintln!("rt history is empty");
-        }
         return Ok(0);
     }
 
@@ -157,22 +149,12 @@ fn rerun_from_history(fallback_cwd: &Path, verbose: bool) -> Result<i32, RtError
     };
 
     let execution_cwd = resolve_history_cwd(&selected.working_directory, fallback_cwd);
-    if verbose && execution_cwd != selected.working_directory {
-        eprintln!(
-            "history cwd not found, falling back to current directory: {}",
-            execution_cwd.to_string_lossy()
-        );
-    }
-
     let result = exec::run_command_line(&selected.command, &execution_cwd)?;
-    if let Err(err) = history::append_default(history::RecordInput {
+    let _ = history::append_default(history::RecordInput {
         command: &result.command,
         working_directory: &execution_cwd,
         exit_code: result.exit_code,
-    }) && verbose
-    {
-        eprintln!("failed to write rt history: {err}");
-    }
+    });
 
     Ok(result.exit_code)
 }
@@ -212,17 +194,13 @@ fn execute_and_record(
     task: &str,
     passthrough: &[String],
     cwd: &Path,
-    verbose: bool,
 ) -> Result<i32, RtError> {
     let result = exec::run(detection.runner, task, passthrough, cwd)?;
-    if let Err(err) = history::append_default(history::RecordInput {
+    let _ = history::append_default(history::RecordInput {
         command: &result.command,
         working_directory: cwd,
         exit_code: result.exit_code,
-    }) && verbose
-    {
-        eprintln!("failed to write rt history: {err}");
-    }
+    });
 
     Ok(result.exit_code)
 }
@@ -469,14 +447,12 @@ mod tests {
         let raw = Args {
             prompt_args: true,
             history: true,
-            verbose: true,
             task: Some("build".to_string()),
             rest: vec!["--".to_string(), "--env".to_string(), "prod".to_string()],
         };
         let cli = Cli::from_raw(raw);
         assert!(cli.prompt_args);
         assert!(cli.history);
-        assert!(cli.verbose);
         assert_eq!(cli.task.as_deref(), Some("build"));
         assert_eq!(
             cli.passthrough,
@@ -545,12 +521,12 @@ mod tests {
     #[test]
     fn build_passthrough_plan_without_args_flag_and_no_required() {
         let required = Vec::<String>::new();
-        let cli = vec!["--verbose".to_string()];
+        let cli = vec!["--flag".to_string()];
         let plan = build_passthrough_plan(&required, &cli, false);
         assert_eq!(
             plan,
             PassthroughPlan {
-                initial_passthrough: vec!["--verbose".to_string()],
+                initial_passthrough: vec!["--flag".to_string()],
                 missing_required: Vec::new(),
                 prompt_optional_args: false,
             }
@@ -560,12 +536,12 @@ mod tests {
     #[test]
     fn build_passthrough_plan_with_args_flag_prompts_optional() {
         let required = Vec::<String>::new();
-        let cli = vec!["--verbose".to_string()];
+        let cli = vec!["--flag".to_string()];
         let plan = build_passthrough_plan(&required, &cli, true);
         assert_eq!(
             plan,
             PassthroughPlan {
-                initial_passthrough: vec!["--verbose".to_string()],
+                initial_passthrough: vec!["--flag".to_string()],
                 missing_required: Vec::new(),
                 prompt_optional_args: true,
             }

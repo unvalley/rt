@@ -8,17 +8,6 @@ use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
-use crate::detect::Runner;
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum HistoryEngine {
-    Make,
-    Just,
-    Shell,
-    Unknown,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HistoryRecord {
     pub v: u8,
@@ -28,29 +17,9 @@ pub struct HistoryRecord {
     #[serde(rename = "exit")]
     pub exit_code: i32,
     pub duration_ms: u64,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub engine: Option<HistoryEngine>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub target: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub file: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub hostname: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub user: Option<String>,
 }
 
 pub struct RecordInput<'a> {
-    pub runner: Runner,
-    pub command: &'a str,
-    pub task: &'a str,
-    pub cwd: &'a Path,
-    pub exit_code: i32,
-    pub duration_ms: u64,
-    pub runner_file: Option<&'a Path>,
-}
-
-pub struct ShellRecordInput<'a> {
     pub command: &'a str,
     pub cwd: &'a Path,
     pub exit_code: i32,
@@ -66,29 +35,6 @@ impl HistoryRecord {
             cwd: input.cwd.to_string_lossy().into_owned(),
             exit_code: input.exit_code,
             duration_ms: input.duration_ms,
-            engine: Some(engine_for_runner(input.runner)),
-            target: Some(input.task.to_string()),
-            file: input
-                .runner_file
-                .map(|path| path.to_string_lossy().into_owned()),
-            hostname: non_empty_env("HOSTNAME"),
-            user: non_empty_env("USER"),
-        }
-    }
-
-    pub fn from_shell_input(input: ShellRecordInput<'_>) -> Self {
-        Self {
-            v: 1,
-            ts: current_timestamp(),
-            cmd: input.command.to_string(),
-            cwd: input.cwd.to_string_lossy().into_owned(),
-            exit_code: input.exit_code,
-            duration_ms: input.duration_ms,
-            engine: Some(HistoryEngine::Shell),
-            target: None,
-            file: None,
-            hostname: non_empty_env("HOSTNAME"),
-            user: non_empty_env("USER"),
         }
     }
 }
@@ -153,11 +99,6 @@ impl HistoryStore {
 
 pub fn append_default(input: RecordInput<'_>) -> io::Result<()> {
     let record = HistoryRecord::from_input(input);
-    append_record_default(&record)
-}
-
-pub fn append_shell_default(input: ShellRecordInput<'_>) -> io::Result<()> {
-    let record = HistoryRecord::from_shell_input(input);
     append_record_default(&record)
 }
 
@@ -242,25 +183,6 @@ fn current_timestamp() -> String {
         .unwrap_or_else(|_| "1970-01-01T00:00:00+00:00".to_string())
 }
 
-fn non_empty_env(name: &str) -> Option<String> {
-    env::var(name).ok().and_then(|value| {
-        let trimmed = value.trim();
-        if trimmed.is_empty() {
-            None
-        } else {
-            Some(trimmed.to_string())
-        }
-    })
-}
-
-fn engine_for_runner(runner: Runner) -> HistoryEngine {
-    match runner {
-        Runner::Makefile | Runner::CargoMake => HistoryEngine::Make,
-        Runner::Justfile => HistoryEngine::Just,
-        Runner::Taskfile | Runner::Maskfile | Runner::Mise => HistoryEngine::Shell,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -274,11 +196,6 @@ mod tests {
             cwd: "/repo".to_string(),
             exit_code,
             duration_ms: 120,
-            engine: Some(HistoryEngine::Make),
-            target: Some("build".to_string()),
-            file: Some("/repo/Makefile".to_string()),
-            hostname: None,
-            user: None,
         }
     }
 
@@ -309,43 +226,20 @@ mod tests {
     }
 
     #[test]
-    fn from_input_sets_required_and_optional_fields() {
+    fn from_input_sets_required_fields() {
         let cwd = PathBuf::from("/repo");
         let record = HistoryRecord::from_input(RecordInput {
-            runner: Runner::Justfile,
             command: "just test",
-            task: "test",
             cwd: &cwd,
             exit_code: 7,
             duration_ms: 34,
-            runner_file: Some(Path::new("/repo/justfile")),
         });
         assert_eq!(record.v, 1);
         assert_eq!(record.cmd, "just test");
         assert_eq!(record.cwd, "/repo");
         assert_eq!(record.exit_code, 7);
         assert_eq!(record.duration_ms, 34);
-        assert_eq!(record.engine, Some(HistoryEngine::Just));
-        assert_eq!(record.target.as_deref(), Some("test"));
-        assert_eq!(record.file.as_deref(), Some("/repo/justfile"));
         assert!(record.ts.contains('T'));
-    }
-
-    #[test]
-    fn from_shell_input_sets_shell_engine_without_target_or_file() {
-        let cwd = PathBuf::from("/repo");
-        let record = HistoryRecord::from_shell_input(ShellRecordInput {
-            command: "make build",
-            cwd: &cwd,
-            exit_code: 3,
-            duration_ms: 11,
-        });
-        assert_eq!(record.engine, Some(HistoryEngine::Shell));
-        assert!(record.target.is_none());
-        assert!(record.file.is_none());
-        assert_eq!(record.cmd, "make build");
-        assert_eq!(record.cwd, "/repo");
-        assert_eq!(record.exit_code, 3);
     }
 
     #[test]

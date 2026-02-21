@@ -170,7 +170,7 @@ fn rerun_from_history(fallback_cwd: &Path, verbose: bool) -> Result<i32, RtError
     }
 
     let result = exec::run_command_line(&selected.cmd, &execution_cwd)?;
-    if let Err(err) = history::append_shell_default(history::ShellRecordInput {
+    if let Err(err) = history::append_default(history::RecordInput {
         command: &result.command,
         cwd: &execution_cwd,
         exit_code: result.exit_code,
@@ -224,13 +224,10 @@ fn execute_and_record(
 ) -> Result<i32, RtError> {
     let result = exec::run(detection.runner, task, passthrough, cwd)?;
     if let Err(err) = history::append_default(history::RecordInput {
-        runner: detection.runner,
         command: &result.command,
-        task,
         cwd,
         exit_code: result.exit_code,
         duration_ms: result.duration_ms,
-        runner_file: Some(detection.runner_file.as_path()),
     }) && verbose
     {
         eprintln!("failed to write rt history: {err}");
@@ -508,11 +505,6 @@ mod tests {
                     cwd: "/repo".to_string(),
                     exit_code: 0,
                     duration_ms: 10,
-                    engine: None,
-                    target: None,
-                    file: None,
-                    hostname: None,
-                    user: None,
                 },
             },
             history::StoredRecord {
@@ -524,11 +516,6 @@ mod tests {
                     cwd: "/repo".to_string(),
                     exit_code: 1,
                     duration_ms: 20,
-                    engine: None,
-                    target: None,
-                    file: None,
-                    hostname: None,
-                    user: None,
                 },
             },
         ];

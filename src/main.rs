@@ -1,5 +1,6 @@
 mod detect;
 mod exec;
+mod history;
 mod parser;
 mod task_args;
 mod tasks;
@@ -7,7 +8,7 @@ mod tasks;
 use bpaf::Bpaf;
 use inquire::error::InquireError;
 use std::fmt;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 fn main() {
     let cli = parse_cli();
@@ -28,6 +29,12 @@ struct Args {
     /// Prompt for task arguments interactively.
     #[bpaf(long("args"), switch)]
     prompt_args: bool,
+    /// Select a previously executed command from rt history and run it.
+    #[bpaf(long("history"), switch)]
+    history: bool,
+    /// Show verbose logs.
+    #[bpaf(long("verbose"), switch)]
+    verbose: bool,
     /// Task name to run in your task runner files (e.g. `build`, `test`).
     #[bpaf(positional("task"))]
     task: Option<String>,
@@ -35,9 +42,11 @@ struct Args {
     rest: Vec<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Cli {
     pub prompt_args: bool,
+    pub history: bool,
+    pub verbose: bool,
     pub task: Option<String>,
     pub passthrough: Vec<String>,
 }
@@ -51,6 +60,8 @@ impl Cli {
     fn from_raw(raw: Args) -> Self {
         Self {
             prompt_args: raw.prompt_args,
+            history: raw.history,
+            verbose: raw.verbose,
             task: raw.task,
             passthrough: normalize_passthrough(raw.rest),
         }
@@ -68,6 +79,9 @@ fn normalize_passthrough(rest: Vec<String>) -> Vec<String> {
 /// Runs tasks based on the provided CLI arguments.
 fn run(cli: Cli) -> Result<i32, RtError> {
     let cwd = std::env::current_dir().map_err(RtError::Io)?;
+    if cli.history {
+        return rerun_from_history(&cwd, cli.verbose);
+    }
 
     if let Some(task) = cli.task {
         let detection = detect::detect_runner(&cwd)?;
@@ -76,7 +90,7 @@ fn run(cli: Cli) -> Result<i32, RtError> {
                 Some(args) => args,
                 None => return Ok(0),
             };
-        return exec::run(detection.runner, &task, &passthrough);
+        return execute_and_record(&detection, &task, &passthrough, &cwd, cli.verbose);
     }
 
     let detections = detect::detect_runners(&cwd)?;
@@ -100,10 +114,131 @@ fn run(cli: Cli) -> Result<i32, RtError> {
                     Some(args) => args,
                     None => return Ok(0),
                 };
-            exec::run(runner, &task, &passthrough)
+            execute_and_record(&detection, &task, &passthrough, &cwd, cli.verbose)
         }
         None => Ok(0),
     }
+}
+
+const HISTORY_SELECT_LIMIT: usize = 200;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct HistoryChoice {
+    ts: String,
+    exit_code: i32,
+    duration_ms: u64,
+    cwd: String,
+    cmd: String,
+}
+
+impl fmt::Display for HistoryChoice {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}  exit={}  {}ms  {}  {}",
+            format_history_timestamp(&self.ts),
+            self.exit_code,
+            self.duration_ms,
+            self.cwd,
+            self.cmd
+        )
+    }
+}
+
+fn rerun_from_history(fallback_cwd: &Path, verbose: bool) -> Result<i32, RtError> {
+    let records = history::read_default().map_err(RtError::Io)?;
+    let choices = build_history_choices(&records, HISTORY_SELECT_LIMIT);
+    if choices.is_empty() {
+        if verbose {
+            eprintln!("rt history is empty");
+        }
+        return Ok(0);
+    }
+
+    let selected = match inquire::Select::new("Select history command", choices).prompt() {
+        Ok(item) => item,
+        Err(InquireError::OperationCanceled | InquireError::OperationInterrupted) => return Ok(0),
+        Err(err) => return Err(RtError::Prompt(err)),
+    };
+
+    let execution_cwd = resolve_history_cwd(&selected.cwd, fallback_cwd);
+    if verbose && execution_cwd != PathBuf::from(&selected.cwd) {
+        eprintln!(
+            "history cwd not found, falling back to current directory: {}",
+            execution_cwd.to_string_lossy()
+        );
+    }
+
+    let result = exec::run_shell(&selected.cmd, &execution_cwd)?;
+    if let Err(err) = history::append_shell_default(history::ShellRecordInput {
+        command: &result.command,
+        cwd: &execution_cwd,
+        exit_code: result.exit_code,
+        duration_ms: result.duration_ms,
+    }) {
+        if verbose {
+            eprintln!("failed to write rt history: {err}");
+        }
+    }
+
+    Ok(result.exit_code)
+}
+
+fn build_history_choices(records: &[history::StoredRecord], limit: usize) -> Vec<HistoryChoice> {
+    records
+        .iter()
+        .rev()
+        .take(limit)
+        .map(|entry| HistoryChoice {
+            ts: entry.record.ts.clone(),
+            exit_code: entry.record.exit_code,
+            duration_ms: entry.record.duration_ms,
+            cwd: entry.record.cwd.clone(),
+            cmd: entry.record.cmd.clone(),
+        })
+        .collect()
+}
+
+fn resolve_history_cwd(recorded_cwd: &str, fallback_cwd: &Path) -> PathBuf {
+    let candidate = PathBuf::from(recorded_cwd);
+    if candidate.is_dir() {
+        candidate
+    } else {
+        fallback_cwd.to_path_buf()
+    }
+}
+
+fn format_history_timestamp(ts: &str) -> String {
+    if ts.len() >= 19 {
+        ts[..19].replace('T', " ")
+    } else {
+        ts.to_string()
+    }
+}
+
+fn execute_and_record(
+    detection: &detect::Detection,
+    task: &str,
+    passthrough: &[String],
+    cwd: &Path,
+    verbose: bool,
+) -> Result<i32, RtError> {
+    let result = exec::run(detection.runner, task, passthrough, cwd)?;
+    if let Err(err) = history::append_default(history::RecordInput {
+        runner: detection.runner,
+        command: &result.command,
+        task,
+        cwd,
+        exit_code: result.exit_code,
+        duration_ms: result.duration_ms,
+        runner_file: Some(detection.runner_file.as_path()),
+    }) {
+        if verbose {
+            eprintln!("failed to write rt history: {err}");
+        }
+    }
+
+    Ok(result.exit_code)
 }
 
 fn collect_passthrough(
@@ -339,15 +474,77 @@ mod tests {
     fn cli_from_raw_parses_args_flag_and_passthrough() {
         let raw = Args {
             prompt_args: true,
+            history: true,
+            verbose: true,
             task: Some("build".to_string()),
             rest: vec!["--".to_string(), "--env".to_string(), "prod".to_string()],
         };
         let cli = Cli::from_raw(raw);
         assert!(cli.prompt_args);
+        assert!(cli.history);
+        assert!(cli.verbose);
         assert_eq!(cli.task.as_deref(), Some("build"));
         assert_eq!(
             cli.passthrough,
             vec!["--env".to_string(), "prod".to_string()]
+        );
+    }
+
+    #[test]
+    fn build_history_choices_returns_newest_first_with_limit() {
+        let records = vec![
+            history::StoredRecord {
+                raw: "a".to_string(),
+                record: history::HistoryRecord {
+                    v: 1,
+                    ts: "2026-02-21T12:00:00+09:00".to_string(),
+                    cmd: "make a".to_string(),
+                    cwd: "/repo".to_string(),
+                    exit_code: 0,
+                    duration_ms: 10,
+                    engine: None,
+                    target: None,
+                    file: None,
+                    hostname: None,
+                    user: None,
+                },
+            },
+            history::StoredRecord {
+                raw: "b".to_string(),
+                record: history::HistoryRecord {
+                    v: 1,
+                    ts: "2026-02-21T12:01:00+09:00".to_string(),
+                    cmd: "make b".to_string(),
+                    cwd: "/repo".to_string(),
+                    exit_code: 1,
+                    duration_ms: 20,
+                    engine: None,
+                    target: None,
+                    file: None,
+                    hostname: None,
+                    user: None,
+                },
+            },
+        ];
+
+        let choices = build_history_choices(&records, 1);
+        assert_eq!(choices.len(), 1);
+        assert_eq!(choices[0].cmd, "make b");
+        assert_eq!(choices[0].exit_code, 1);
+    }
+
+    #[test]
+    fn resolve_history_cwd_falls_back_when_recorded_path_is_missing() {
+        let fallback = std::env::current_dir().unwrap();
+        let resolved = resolve_history_cwd("/__definitely_missing__/rt", &fallback);
+        assert_eq!(resolved, fallback);
+    }
+
+    #[test]
+    fn format_history_timestamp_truncates_rfc3339() {
+        assert_eq!(
+            format_history_timestamp("2026-02-21T12:34:56+09:00"),
+            "2026-02-21 12:34:56".to_string()
         );
     }
 

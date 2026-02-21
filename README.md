@@ -66,6 +66,14 @@ Add `--args` if you also want to enter optional arguments interactively.
 rt [--args] <task> [-- args...]
 ```
 
+### `rt --history`: rerun from rt-specific history
+
+```sh
+rt --history
+```
+
+`rt` stores history as JSONL in state directories (priority: `$XDG_STATE_HOME/rt/history.jsonl`, `~/.local/state/rt/history.jsonl`, `~/.rt/history.jsonl`).
+
 ### Why?
 
 There are many task runners available, and different projects use different ones.

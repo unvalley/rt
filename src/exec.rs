@@ -1,22 +1,58 @@
+use std::path::Path;
 use std::process::Command;
+use std::time::Instant;
 
 use crate::RtError;
 use crate::detect::{Runner, runner_command};
 
-pub fn run(runner: Runner, task: &str, passthrough: &[String]) -> Result<i32, RtError> {
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RunResult {
+    pub exit_code: i32,
+    pub duration_ms: u64,
+    pub command: String,
+}
+
+pub fn run(
+    runner: Runner,
+    task: &str,
+    passthrough: &[String],
+    cwd: &Path,
+) -> Result<RunResult, RtError> {
     let mut command = base_command(runner)?;
     if runner == Runner::Mise {
         command.arg("run");
     }
-    let current_dir = std::env::current_dir().map_err(RtError::Io)?;
+    let command_preview = preview_command(runner, task, passthrough);
+    let started_at = Instant::now();
     let status = command
         .arg(task)
         .args(passthrough)
-        .current_dir(current_dir)
+        .current_dir(cwd)
         .status()
         .map_err(RtError::Spawn)?;
 
-    Ok(status.code().unwrap_or(2))
+    Ok(RunResult {
+        exit_code: status.code().unwrap_or(2),
+        duration_ms: started_at.elapsed().as_millis() as u64,
+        command: command_preview,
+    })
+}
+
+pub fn run_shell(command: &str, cwd: &Path) -> Result<RunResult, RtError> {
+    ensure_tool("sh")?;
+    let started_at = Instant::now();
+    let status = Command::new("sh")
+        .arg("-lc")
+        .arg(command)
+        .current_dir(cwd)
+        .status()
+        .map_err(RtError::Spawn)?;
+
+    Ok(RunResult {
+        exit_code: status.code().unwrap_or(2),
+        duration_ms: started_at.elapsed().as_millis() as u64,
+        command: command.to_string(),
+    })
 }
 
 pub fn base_command(runner: Runner) -> Result<Command, RtError> {
@@ -125,5 +161,19 @@ mod tests {
             preview_command(Runner::CargoMake, "build", &[]),
             "cargo make build"
         );
+    }
+
+    #[test]
+    fn run_shell_returns_success_exit_code() {
+        let cwd = std::env::current_dir().unwrap();
+        let result = run_shell("echo ok >/dev/null", &cwd).unwrap();
+        assert_eq!(result.exit_code, 0);
+    }
+
+    #[test]
+    fn run_shell_returns_command_exit_code() {
+        let cwd = std::env::current_dir().unwrap();
+        let result = run_shell("exit 7", &cwd).unwrap();
+        assert_eq!(result.exit_code, 7);
     }
 }

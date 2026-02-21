@@ -121,6 +121,84 @@ jobs:
           files: dist/**/*.tgz
           tag_name: ${{ env.TAG_NAME }}
 
+  update_homebrew_tap:
+    name: Update Homebrew Tap Formula
+    runs-on: ubuntu-latest
+    needs: release
+    if: ${{ secrets.HOMEBREW_TAP_TOKEN != '' }}
+    steps:
+      - name: Download Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+
+      - name: Prepare formula metadata
+        id: meta
+        shell: bash
+        run: |
+          version="${TAG_NAME#v}"
+          archive_name="rt-cli-aarch64-apple-darwin-v${version}.tgz"
+          archive_path="$(find dist -type f -name "${archive_name}" | head -n 1)"
+          if [[ -z "${archive_path}" ]]; then
+            echo "::error::Archive not found: ${archive_name}"
+            exit 1
+          fi
+          archive_sha256="$(sha256sum "${archive_path}" | awk '{print $1}')"
+          archive_url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG_NAME}/${archive_name}"
+          {
+            echo "version=${version}"
+            echo "archive_url=${archive_url}"
+            echo "archive_sha256=${archive_sha256}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Checkout homebrew tap repository
+        uses: actions/checkout@v4
+        with:
+          repository: unvalley/homebrew-tap
+          ref: main
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: homebrew-tap
+
+      - name: Update Formula/rt.rb
+        shell: bash
+        run: |
+          formula_path="homebrew-tap/Formula/rt.rb"
+          ruby - "${formula_path}" "${{ steps.meta.outputs.version }}" "${{ steps.meta.outputs.archive_url }}" "${{ steps.meta.outputs.archive_sha256 }}" <<'RUBY'
+          path, version, url, sha256 = ARGV
+          content = File.read(path)
+          updated = content
+            .sub(/version\s+"[^"]+"/, %(version "#{version}"))
+            .sub(/url\s+"[^"]+"/, %(url "#{url}"))
+            .sub(/sha256\s+"[^"]+"/, %(sha256 "#{sha256}"))
+
+          if updated == content
+            warn "No changes were applied to #{path}"
+            exit 1
+          end
+
+          File.write(path, updated)
+          RUBY
+
+      - name: Show formula diff
+        run: git -C homebrew-tap diff -- Formula/rt.rb
+
+      - name: Create pull request
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: homebrew-tap
+          commit-message: "chore: bump rt to ${{ env.TAG_NAME }}"
+          branch: chore/bump-rt-${{ env.TAG_NAME }}
+          delete-branch: true
+          base: main
+          title: "chore: bump rt to ${{ env.TAG_NAME }}"
+          body: |
+            Automated formula update for `${{ env.TAG_NAME }}`.
+
+            - Version: `${{ steps.meta.outputs.version }}`
+            - Artifact: `${{ steps.meta.outputs.archive_url }}`
+            - SHA256: `${{ steps.meta.outputs.archive_sha256 }}`
+
   publish_crates:
     name: Publish to crates.io
     runs-on: ubuntu-latest

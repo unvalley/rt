@@ -7,7 +7,8 @@ use crate::detect::{Runner, runner_command};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RunResult {
     pub exit_code: i32,
-    pub command: String,
+    pub program: String,
+    pub args: Vec<String>,
 }
 
 pub fn run(
@@ -16,11 +17,18 @@ pub fn run(
     passthrough: &[String],
     cwd: &Path,
 ) -> Result<RunResult, RtError> {
-    let mut command = base_command(runner)?;
-    if runner == Runner::Mise {
-        command.arg("run");
+    let program = runner_command(runner).to_string();
+    let mut args = Vec::new();
+    if runner == Runner::CargoMake {
+        args.push("make".to_string());
     }
-    let command_preview = preview_command(runner, task, passthrough);
+    if runner == Runner::Mise {
+        args.push("run".to_string());
+    }
+    args.push(task.to_string());
+    args.extend(passthrough.iter().cloned());
+
+    let mut command = base_command(runner)?;
     let status = command
         .arg(task)
         .args(passthrough)
@@ -30,23 +38,15 @@ pub fn run(
 
     Ok(RunResult {
         exit_code: status.code().unwrap_or(2),
-        command: command_preview,
+        program,
+        args,
     })
 }
 
-pub fn run_command_line(command: &str, cwd: &Path) -> Result<RunResult, RtError> {
-    let argv = shell_words::split(command).map_err(|err| RtError::InvalidCommandLine {
-        message: err.to_string(),
-    })?;
-    let (program, args) = argv
-        .split_first()
-        .ok_or_else(|| RtError::InvalidCommandLine {
-            message: "empty command".to_string(),
-        })?;
-
+pub fn run_program(program: &str, args: &[String], cwd: &Path) -> Result<RunResult, RtError> {
     if !program.contains('/') && which::which(program).is_err() {
         return Err(RtError::ToolMissingCommand {
-            tool: program.clone(),
+            tool: program.to_string(),
         });
     }
 
@@ -58,7 +58,8 @@ pub fn run_command_line(command: &str, cwd: &Path) -> Result<RunResult, RtError>
 
     Ok(RunResult {
         exit_code: status.code().unwrap_or(2),
-        command: command.to_string(),
+        program: program.to_string(),
+        args: args.to_vec(),
     })
 }
 
@@ -81,7 +82,7 @@ pub fn ensure_tool(tool: &'static str) -> Result<(), RtError> {
 
 pub fn preview_command(runner: Runner, task: &str, passthrough: &[String]) -> String {
     let mut parts = Vec::new();
-    parts.push(runner_command(runner).to_string());
+    let program = runner_command(runner);
     if runner == Runner::CargoMake {
         parts.push("make".to_string());
     }
@@ -91,6 +92,13 @@ pub fn preview_command(runner: Runner, task: &str, passthrough: &[String]) -> St
     parts.push(task.to_string());
     parts.extend(passthrough.iter().cloned());
 
+    format_program_args(program, &parts)
+}
+
+pub fn format_program_args(program: &str, args: &[String]) -> String {
+    let mut parts = Vec::new();
+    parts.push(program.to_string());
+    parts.extend(args.iter().cloned());
     parts
         .into_iter()
         .map(|part| quote_shell_arg(&part))
@@ -171,33 +179,36 @@ mod tests {
     }
 
     #[test]
-    fn run_command_line_returns_success_exit_code() {
+    fn run_program_returns_success_exit_code() {
         let cwd = std::env::current_dir().unwrap();
-        let result = run_command_line("true", &cwd).unwrap();
+        let result = run_program("true", &[], &cwd).unwrap();
         assert_eq!(result.exit_code, 0);
     }
 
     #[test]
-    fn run_command_line_returns_command_exit_code() {
+    fn run_program_returns_command_exit_code() {
         let cwd = std::env::current_dir().unwrap();
-        let result = run_command_line("false", &cwd).unwrap();
+        let result = run_program("false", &[], &cwd).unwrap();
         assert_eq!(result.exit_code, 1);
     }
 
     #[test]
-    fn run_command_line_parses_quoted_arguments() {
+    fn run_program_passes_arguments() {
         let cwd = std::env::current_dir().unwrap();
-        let result = run_command_line("true 'hello world'", &cwd).unwrap();
+        let result = run_program("true", &["hello world".to_string()], &cwd).unwrap();
         assert_eq!(result.exit_code, 0);
     }
 
     #[test]
-    fn run_command_line_rejects_empty_command() {
-        let cwd = std::env::current_dir().unwrap();
-        let err = run_command_line("   ", &cwd).unwrap_err();
-        match err {
-            RtError::InvalidCommandLine { .. } => {}
-            other => panic!("unexpected error: {other:?}"),
-        }
+    fn format_program_args_quotes_special_args() {
+        let command = format_program_args(
+            "make",
+            &[
+                "build".to_string(),
+                "hello world".to_string(),
+                "a'b".to_string(),
+            ],
+        );
+        assert_eq!(command, "make build 'hello world' 'a'\\''b'");
     }
 }

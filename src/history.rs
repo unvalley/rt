@@ -16,9 +16,12 @@ pub struct HistoryRecord {
     // Timestamp is required for ordering and for showing when a command was run.
     #[serde(rename = "timestamp")]
     pub timestamp: String,
-    // Command text is required so users can inspect and re-run the same command.
-    #[serde(rename = "command")]
-    pub command: String,
+    // Executable path/name is stored separately from args to avoid reparsing.
+    #[serde(rename = "program")]
+    pub program: String,
+    // Arguments are stored as argv to preserve exact execution semantics.
+    #[serde(rename = "args")]
+    pub args: Vec<String>,
     // Working directory is required because command behavior depends on CWD.
     #[serde(rename = "working_directory")]
     pub working_directory: String,
@@ -28,7 +31,8 @@ pub struct HistoryRecord {
 }
 
 pub struct RecordInput<'a> {
-    pub command: &'a str,
+    pub program: &'a str,
+    pub args: &'a [String],
     pub working_directory: &'a Path,
     pub exit_code: i32,
 }
@@ -36,13 +40,35 @@ pub struct RecordInput<'a> {
 impl HistoryRecord {
     pub fn from_input(input: RecordInput<'_>) -> Self {
         Self {
-            schema_version: 1,
+            schema_version: 2,
             timestamp: current_timestamp(),
-            command: input.command.to_string(),
+            program: input.program.to_string(),
+            args: input.args.to_vec(),
             working_directory: input.working_directory.to_string_lossy().into_owned(),
             exit_code: input.exit_code,
         }
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+struct HistoryRecordV1 {
+    #[serde(rename = "version")]
+    schema_version: u8,
+    #[serde(rename = "timestamp")]
+    timestamp: String,
+    #[serde(rename = "command")]
+    command: String,
+    #[serde(rename = "working_directory")]
+    working_directory: String,
+    #[serde(rename = "exit_code")]
+    exit_code: i32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(untagged)]
+enum HistoryRecordOnDisk {
+    V2(HistoryRecord),
+    V1(HistoryRecordV1),
 }
 
 #[derive(Debug, Clone)]
@@ -94,7 +120,10 @@ impl HistoryStore {
             if line.trim().is_empty() {
                 continue;
             }
-            if let Ok(record) = serde_json::from_str::<HistoryRecord>(&line) {
+            if let Ok(record) = serde_json::from_str::<HistoryRecordOnDisk>(&line) {
+                let Some(record) = into_v2_record(record) else {
+                    continue;
+                };
                 records.push(StoredRecord { raw: line, record });
             }
         }
@@ -122,6 +151,24 @@ fn append_record_default(record: &HistoryRecord) -> io::Result<()> {
     }
 
     Err(last_error.unwrap_or_else(|| io::Error::other("failed to write history")))
+}
+
+fn into_v2_record(record: HistoryRecordOnDisk) -> Option<HistoryRecord> {
+    match record {
+        HistoryRecordOnDisk::V2(record) => Some(record),
+        HistoryRecordOnDisk::V1(record) => {
+            let argv = shell_words::split(&record.command).ok()?;
+            let (program, args) = argv.split_first()?;
+            Some(HistoryRecord {
+                schema_version: 2,
+                timestamp: record.timestamp,
+                program: program.to_string(),
+                args: args.to_vec(),
+                working_directory: record.working_directory,
+                exit_code: record.exit_code,
+            })
+        }
+    }
 }
 
 pub fn read_default() -> io::Result<Vec<StoredRecord>> {
@@ -195,10 +242,13 @@ mod tests {
     use tempfile::tempdir;
 
     fn sample_record(ts: &str, cmd: &str, exit_code: i32) -> HistoryRecord {
+        let argv = shell_words::split(cmd).unwrap();
+        let (program, args) = argv.split_first().unwrap();
         HistoryRecord {
-            schema_version: 1,
+            schema_version: 2,
             timestamp: ts.to_string(),
-            command: cmd.to_string(),
+            program: program.to_string(),
+            args: args.to_vec(),
             working_directory: "/repo".to_string(),
             exit_code,
         }
@@ -234,12 +284,14 @@ mod tests {
     fn from_input_sets_required_fields() {
         let cwd = PathBuf::from("/repo");
         let record = HistoryRecord::from_input(RecordInput {
-            command: "just test",
+            program: "just",
+            args: &["test".to_string()],
             working_directory: &cwd,
             exit_code: 7,
         });
-        assert_eq!(record.schema_version, 1);
-        assert_eq!(record.command, "just test");
+        assert_eq!(record.schema_version, 2);
+        assert_eq!(record.program, "just");
+        assert_eq!(record.args, vec!["test".to_string()]);
         assert_eq!(record.working_directory, "/repo");
         assert_eq!(record.exit_code, 7);
         assert!(record.timestamp.contains('T'));
@@ -268,7 +320,7 @@ mod tests {
             &history_path,
             concat!(
                 "not-json\n",
-                "{\"version\":1,\"timestamp\":\"2026-02-21T12:34:56+09:00\",\"command\":\"make build\",\"working_directory\":\"/repo\",\"exit_code\":0}\n"
+                "{\"version\":2,\"timestamp\":\"2026-02-21T12:34:56+09:00\",\"program\":\"make\",\"args\":[\"build\"],\"working_directory\":\"/repo\",\"exit_code\":0}\n"
             ),
         )
         .unwrap();
@@ -276,7 +328,8 @@ mod tests {
         let store = HistoryStore::new(history_path);
         let records = store.read_all().unwrap();
         assert_eq!(records.len(), 1);
-        assert_eq!(records[0].record.command, "make build");
+        assert_eq!(records[0].record.program, "make");
+        assert_eq!(records[0].record.args, vec!["build".to_string()]);
     }
 
     #[test]
@@ -299,7 +352,7 @@ mod tests {
         let records = read_from_paths(vec![first, second]).unwrap();
         let commands: Vec<String> = records
             .into_iter()
-            .map(|record| record.record.command)
+            .map(|record| format!("{} {}", record.record.program, record.record.args.join(" ")))
             .collect();
         assert_eq!(
             commands,
@@ -325,7 +378,25 @@ mod tests {
 
         let records = read_from_paths(vec![unreadable, valid]).unwrap();
         assert_eq!(records.len(), 1);
-        assert_eq!(records[0].record.command, "make e");
+        assert_eq!(records[0].record.program, "make");
+        assert_eq!(records[0].record.args, vec!["e".to_string()]);
+    }
+
+    #[test]
+    fn read_all_migrates_v1_command_to_program_and_args() {
+        let dir = tempdir().unwrap();
+        let history_path = dir.path().join("history.jsonl");
+        fs::write(
+            &history_path,
+            "{\"version\":1,\"timestamp\":\"2026-02-21T12:34:56+09:00\",\"command\":\"make 'hello world'\",\"working_directory\":\"/repo\",\"exit_code\":0}\n",
+        )
+        .unwrap();
+
+        let records = HistoryStore::new(history_path).read_all().unwrap();
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].record.schema_version, 2);
+        assert_eq!(records[0].record.program, "make");
+        assert_eq!(records[0].record.args, vec!["hello world".to_string()]);
     }
 
     #[test]

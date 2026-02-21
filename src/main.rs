@@ -121,7 +121,9 @@ const HISTORY_SELECT_LIMIT: usize = 200;
 struct HistoryChoice {
     timestamp: String,
     working_directory: String,
-    command: String,
+    program: String,
+    args: Vec<String>,
+    display_command: String,
 }
 
 impl fmt::Display for HistoryChoice {
@@ -129,7 +131,7 @@ impl fmt::Display for HistoryChoice {
         write!(
             f,
             "{}  {}",
-            self.command,
+            self.display_command,
             format_history_timestamp(&self.timestamp)
         )
     }
@@ -149,9 +151,10 @@ fn rerun_from_history(fallback_cwd: &Path) -> Result<i32, RtError> {
     };
 
     let execution_cwd = resolve_history_cwd(&selected.working_directory, fallback_cwd);
-    let result = exec::run_command_line(&selected.command, &execution_cwd)?;
+    let result = exec::run_program(&selected.program, &selected.args, &execution_cwd)?;
     let _ = history::append_default(history::RecordInput {
-        command: &result.command,
+        program: &result.program,
+        args: &result.args,
         working_directory: &execution_cwd,
         exit_code: result.exit_code,
     });
@@ -167,7 +170,9 @@ fn build_history_choices(records: &[history::StoredRecord], limit: usize) -> Vec
         .map(|entry| HistoryChoice {
             timestamp: entry.record.timestamp.clone(),
             working_directory: entry.record.working_directory.clone(),
-            command: entry.record.command.clone(),
+            program: entry.record.program.clone(),
+            args: entry.record.args.clone(),
+            display_command: exec::format_program_args(&entry.record.program, &entry.record.args),
         })
         .collect()
 }
@@ -197,7 +202,8 @@ fn execute_and_record(
 ) -> Result<i32, RtError> {
     let result = exec::run(detection.runner, task, passthrough, cwd)?;
     let _ = history::append_default(history::RecordInput {
-        command: &result.command,
+        program: &result.program,
+        args: &result.args,
         working_directory: cwd,
         exit_code: result.exit_code,
     });
@@ -318,10 +324,7 @@ fn classify_error(err: &RtError) -> i32 {
         | RtError::ToolMissingCommand { .. }
         | RtError::NoTasks { .. }
         | RtError::ListFailed { .. } => 3,
-        RtError::Prompt(_)
-        | RtError::Io(_)
-        | RtError::Spawn(_)
-        | RtError::InvalidCommandLine { .. } => 2,
+        RtError::Prompt(_) | RtError::Io(_) | RtError::Spawn(_) => 2,
     }
 }
 
@@ -377,8 +380,6 @@ pub enum RtError {
     Io(std::io::Error),
     #[error("failed to spawn command: {0}")]
     Spawn(std::io::Error),
-    #[error("invalid command line: {message}")]
-    InvalidCommandLine { message: String },
 }
 
 #[cfg(test)]
@@ -466,9 +467,10 @@ mod tests {
             history::StoredRecord {
                 raw: "a".to_string(),
                 record: history::HistoryRecord {
-                    schema_version: 1,
+                    schema_version: 2,
                     timestamp: "2026-02-21T12:00:00+09:00".to_string(),
-                    command: "make a".to_string(),
+                    program: "make".to_string(),
+                    args: vec!["a".to_string()],
                     working_directory: "/repo".to_string(),
                     exit_code: 0,
                 },
@@ -476,9 +478,10 @@ mod tests {
             history::StoredRecord {
                 raw: "b".to_string(),
                 record: history::HistoryRecord {
-                    schema_version: 1,
+                    schema_version: 2,
                     timestamp: "2026-02-21T12:01:00+09:00".to_string(),
-                    command: "make b".to_string(),
+                    program: "make".to_string(),
+                    args: vec!["b".to_string()],
                     working_directory: "/repo".to_string(),
                     exit_code: 1,
                 },
@@ -487,7 +490,8 @@ mod tests {
 
         let choices = build_history_choices(&records, 1);
         assert_eq!(choices.len(), 1);
-        assert_eq!(choices[0].command, "make b");
+        assert_eq!(choices[0].program, "make");
+        assert_eq!(choices[0].args, vec!["b".to_string()]);
     }
 
     #[test]
@@ -510,7 +514,9 @@ mod tests {
         let choice = HistoryChoice {
             timestamp: "2026-02-21T12:34:56+09:00".to_string(),
             working_directory: "/repo".to_string(),
-            command: "make build".to_string(),
+            program: "make".to_string(),
+            args: vec!["build".to_string()],
+            display_command: "make build".to_string(),
         };
         assert_eq!(
             choice.to_string(),

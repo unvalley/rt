@@ -11,19 +11,19 @@ use time::format_description::well_known::Rfc3339;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HistoryRecord {
     // Schema version keeps JSONL lines readable after future format changes.
-    #[serde(rename = "version", alias = "v")]
+    #[serde(rename = "version")]
     pub schema_version: u8,
     // Timestamp is required for ordering and for showing when a command was run.
-    #[serde(rename = "timestamp", alias = "ts")]
+    #[serde(rename = "timestamp")]
     pub timestamp: String,
     // Command text is required so users can inspect and re-run the same command.
-    #[serde(rename = "command", alias = "cmd")]
+    #[serde(rename = "command")]
     pub command: String,
     // Working directory is required because command behavior depends on CWD.
-    #[serde(rename = "working_directory", alias = "cwd")]
+    #[serde(rename = "working_directory")]
     pub working_directory: String,
     // Exit code is required to distinguish successful and failed runs.
-    #[serde(rename = "exit_code", alias = "exit")]
+    #[serde(rename = "exit_code")]
     pub exit_code: i32,
 }
 
@@ -326,23 +326,6 @@ mod tests {
         let records = read_from_paths(vec![unreadable, valid]).unwrap();
         assert_eq!(records.len(), 1);
         assert_eq!(records[0].record.command, "make e");
-    }
-
-    #[test]
-    fn read_all_accepts_legacy_short_field_names() {
-        let dir = tempdir().unwrap();
-        let history_path = dir.path().join("history.jsonl");
-        fs::write(
-            &history_path,
-            "{\"v\":1,\"ts\":\"2026-02-21T12:34:56+09:00\",\"cmd\":\"make build\",\"cwd\":\"/repo\",\"exit\":0}\n",
-        )
-        .unwrap();
-
-        let records = HistoryStore::new(history_path).read_all().unwrap();
-        assert_eq!(records.len(), 1);
-        assert_eq!(records[0].record.schema_version, 1);
-        assert_eq!(records[0].record.command, "make build");
-        assert_eq!(records[0].record.working_directory, "/repo");
     }
 
     #[test]

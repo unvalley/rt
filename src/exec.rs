@@ -38,12 +38,25 @@ pub fn run(
     })
 }
 
-pub fn run_shell(command: &str, cwd: &Path) -> Result<RunResult, RtError> {
-    ensure_tool("sh")?;
+pub fn run_command_line(command: &str, cwd: &Path) -> Result<RunResult, RtError> {
+    let argv = shell_words::split(command).map_err(|err| RtError::InvalidCommandLine {
+        message: err.to_string(),
+    })?;
+    let (program, args) = argv
+        .split_first()
+        .ok_or_else(|| RtError::InvalidCommandLine {
+            message: "empty command".to_string(),
+        })?;
+
+    if !program.contains('/') && which::which(program).is_err() {
+        return Err(RtError::ToolMissingCommand {
+            tool: program.clone(),
+        });
+    }
+
     let started_at = Instant::now();
-    let status = Command::new("sh")
-        .arg("-lc")
-        .arg(command)
+    let status = Command::new(program)
+        .args(args)
         .current_dir(cwd)
         .status()
         .map_err(RtError::Spawn)?;
@@ -164,16 +177,33 @@ mod tests {
     }
 
     #[test]
-    fn run_shell_returns_success_exit_code() {
+    fn run_command_line_returns_success_exit_code() {
         let cwd = std::env::current_dir().unwrap();
-        let result = run_shell("echo ok >/dev/null", &cwd).unwrap();
+        let result = run_command_line("true", &cwd).unwrap();
         assert_eq!(result.exit_code, 0);
     }
 
     #[test]
-    fn run_shell_returns_command_exit_code() {
+    fn run_command_line_returns_command_exit_code() {
         let cwd = std::env::current_dir().unwrap();
-        let result = run_shell("exit 7", &cwd).unwrap();
-        assert_eq!(result.exit_code, 7);
+        let result = run_command_line("false", &cwd).unwrap();
+        assert_eq!(result.exit_code, 1);
+    }
+
+    #[test]
+    fn run_command_line_parses_quoted_arguments() {
+        let cwd = std::env::current_dir().unwrap();
+        let result = run_command_line("true 'hello world'", &cwd).unwrap();
+        assert_eq!(result.exit_code, 0);
+    }
+
+    #[test]
+    fn run_command_line_rejects_empty_command() {
+        let cwd = std::env::current_dir().unwrap();
+        let err = run_command_line("   ", &cwd).unwrap_err();
+        match err {
+            RtError::InvalidCommandLine { .. } => {}
+            other => panic!("unexpected error: {other:?}"),
+        }
     }
 }

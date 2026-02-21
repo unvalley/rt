@@ -169,7 +169,7 @@ fn rerun_from_history(fallback_cwd: &Path, verbose: bool) -> Result<i32, RtError
         );
     }
 
-    let result = exec::run_shell(&selected.cmd, &execution_cwd)?;
+    let result = exec::run_command_line(&selected.cmd, &execution_cwd)?;
     if let Err(err) = history::append_shell_default(history::ShellRecordInput {
         command: &result.command,
         cwd: &execution_cwd,
@@ -349,9 +349,13 @@ fn classify_error(err: &RtError) -> i32 {
     match err {
         RtError::NoRunnerFound { .. }
         | RtError::ToolMissing { .. }
+        | RtError::ToolMissingCommand { .. }
         | RtError::NoTasks { .. }
         | RtError::ListFailed { .. } => 3,
-        RtError::Prompt(_) | RtError::Io(_) | RtError::Spawn(_) => 2,
+        RtError::Prompt(_)
+        | RtError::Io(_)
+        | RtError::Spawn(_)
+        | RtError::InvalidCommandLine { .. } => 2,
     }
 }
 
@@ -395,6 +399,8 @@ pub enum RtError {
     NoRunnerFound { cwd: PathBuf },
     #[error("required tool not found in PATH: {tool}")]
     ToolMissing { tool: &'static str },
+    #[error("required tool not found in PATH: {tool}")]
+    ToolMissingCommand { tool: String },
     #[error("no tasks found using {tool}")]
     NoTasks { tool: &'static str },
     #[error("failed to list tasks using {tool} (exit code {status})")]
@@ -405,6 +411,8 @@ pub enum RtError {
     Io(std::io::Error),
     #[error("failed to spawn command: {0}")]
     Spawn(std::io::Error),
+    #[error("invalid command line: {message}")]
+    InvalidCommandLine { message: String },
 }
 
 #[cfg(test)]

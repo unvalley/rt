@@ -50,27 +50,6 @@ impl HistoryRecord {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-struct HistoryRecordV1 {
-    #[serde(rename = "version")]
-    schema_version: u8,
-    #[serde(rename = "timestamp")]
-    timestamp: String,
-    #[serde(rename = "command")]
-    command: String,
-    #[serde(rename = "working_directory")]
-    working_directory: String,
-    #[serde(rename = "exit_code")]
-    exit_code: i32,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[serde(untagged)]
-enum HistoryRecordOnDisk {
-    V2(HistoryRecord),
-    V1(HistoryRecordV1),
-}
-
 #[derive(Debug, Clone)]
 pub struct HistoryStore {
     path: PathBuf,
@@ -120,10 +99,7 @@ impl HistoryStore {
             if line.trim().is_empty() {
                 continue;
             }
-            if let Ok(record) = serde_json::from_str::<HistoryRecordOnDisk>(&line) {
-                let Some(record) = into_v2_record(record) else {
-                    continue;
-                };
+            if let Ok(record) = serde_json::from_str::<HistoryRecord>(&line) {
                 records.push(StoredRecord { raw: line, record });
             }
         }
@@ -151,24 +127,6 @@ fn append_record_default(record: &HistoryRecord) -> io::Result<()> {
     }
 
     Err(last_error.unwrap_or_else(|| io::Error::other("failed to write history")))
-}
-
-fn into_v2_record(record: HistoryRecordOnDisk) -> Option<HistoryRecord> {
-    match record {
-        HistoryRecordOnDisk::V2(record) => Some(record),
-        HistoryRecordOnDisk::V1(record) => {
-            let argv = shell_words::split(&record.command).ok()?;
-            let (program, args) = argv.split_first()?;
-            Some(HistoryRecord {
-                schema_version: 2,
-                timestamp: record.timestamp,
-                program: program.to_string(),
-                args: args.to_vec(),
-                working_directory: record.working_directory,
-                exit_code: record.exit_code,
-            })
-        }
-    }
 }
 
 pub fn read_default() -> io::Result<Vec<StoredRecord>> {
@@ -241,14 +199,12 @@ mod tests {
     use super::*;
     use tempfile::tempdir;
 
-    fn sample_record(ts: &str, cmd: &str, exit_code: i32) -> HistoryRecord {
-        let argv = shell_words::split(cmd).unwrap();
-        let (program, args) = argv.split_first().unwrap();
+    fn sample_record(ts: &str, program: &str, args: &[&str], exit_code: i32) -> HistoryRecord {
         HistoryRecord {
             schema_version: 2,
             timestamp: ts.to_string(),
             program: program.to_string(),
-            args: args.to_vec(),
+            args: args.iter().map(|arg| (*arg).to_string()).collect(),
             working_directory: "/repo".to_string(),
             exit_code,
         }
@@ -302,7 +258,7 @@ mod tests {
         let dir = tempdir().unwrap();
         let history_path = dir.path().join("a/b/c/history.jsonl");
         let store = HistoryStore::new(history_path.clone());
-        let record = sample_record("2026-02-21T12:34:56+09:00", "make build", 0);
+        let record = sample_record("2026-02-21T12:34:56+09:00", "make", &["build"], 0);
 
         store.append(&record).unwrap();
         assert!(history_path.exists());
@@ -340,13 +296,28 @@ mod tests {
         let store_first = HistoryStore::new(first.clone());
         let store_second = HistoryStore::new(second.clone());
         store_first
-            .append(&sample_record("2026-02-21T12:02:00+09:00", "make c", 0))
+            .append(&sample_record(
+                "2026-02-21T12:02:00+09:00",
+                "make",
+                &["c"],
+                0,
+            ))
             .unwrap();
         store_second
-            .append(&sample_record("2026-02-21T12:01:00+09:00", "make b", 0))
+            .append(&sample_record(
+                "2026-02-21T12:01:00+09:00",
+                "make",
+                &["b"],
+                0,
+            ))
             .unwrap();
         store_first
-            .append(&sample_record("2026-02-21T12:03:00+09:00", "make d", 0))
+            .append(&sample_record(
+                "2026-02-21T12:03:00+09:00",
+                "make",
+                &["d"],
+                0,
+            ))
             .unwrap();
 
         let records = read_from_paths(vec![first, second]).unwrap();
@@ -373,30 +344,18 @@ mod tests {
         let valid = dir.path().join("history.jsonl");
         let valid_store = HistoryStore::new(valid.clone());
         valid_store
-            .append(&sample_record("2026-02-21T12:04:00+09:00", "make e", 0))
+            .append(&sample_record(
+                "2026-02-21T12:04:00+09:00",
+                "make",
+                &["e"],
+                0,
+            ))
             .unwrap();
 
         let records = read_from_paths(vec![unreadable, valid]).unwrap();
         assert_eq!(records.len(), 1);
         assert_eq!(records[0].record.program, "make");
         assert_eq!(records[0].record.args, vec!["e".to_string()]);
-    }
-
-    #[test]
-    fn read_all_migrates_v1_command_to_program_and_args() {
-        let dir = tempdir().unwrap();
-        let history_path = dir.path().join("history.jsonl");
-        fs::write(
-            &history_path,
-            "{\"version\":1,\"timestamp\":\"2026-02-21T12:34:56+09:00\",\"command\":\"make 'hello world'\",\"working_directory\":\"/repo\",\"exit_code\":0}\n",
-        )
-        .unwrap();
-
-        let records = HistoryStore::new(history_path).read_all().unwrap();
-        assert_eq!(records.len(), 1);
-        assert_eq!(records[0].record.schema_version, 2);
-        assert_eq!(records[0].record.program, "make");
-        assert_eq!(records[0].record.args, vec!["hello world".to_string()]);
     }
 
     #[test]

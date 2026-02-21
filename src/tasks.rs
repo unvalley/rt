@@ -81,12 +81,7 @@ impl fmt::Display for TaskChoice {
     }
 }
 
-fn score_task(
-    input: &str,
-    task_name: &str,
-    idx: usize,
-    items_len: usize,
-) -> Option<i64> {
+fn score_task(input: &str, task_name: &str, idx: usize, items_len: usize) -> Option<i64> {
     let input = input.trim();
     if input.is_empty() {
         return Some(items_len.saturating_sub(idx) as i64);

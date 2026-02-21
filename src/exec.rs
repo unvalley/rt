@@ -1,7 +1,7 @@
 use std::ffi::OsStr;
 use std::fs::OpenOptions;
 use std::io::{BufRead, BufReader, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -39,16 +39,16 @@ pub fn ensure_tool(tool: &'static str) -> Result<(), RtError> {
 }
 
 fn append_command_to_shell_history(command: &Command) {
-    let Some(histfile) = std::env::var_os("HISTFILE") else {
+    let shell = std::env::var("SHELL").ok();
+    let Some(histfile) = resolve_history_file(shell.as_deref()) else {
         return;
     };
-    let shell = std::env::var("SHELL").ok();
     let command_line = command_to_shell_string(command);
     if command_line.trim().is_empty() {
         return;
     }
 
-    let format = history_format(shell.as_deref(), Path::new(&histfile));
+    let format = history_format(shell.as_deref(), &histfile);
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_secs())
@@ -92,21 +92,83 @@ fn shell_escape(arg: &str) -> String {
 enum HistoryFormat {
     Plain,
     ZshExtended,
+    Fish,
+}
+
+fn resolve_history_file(shell: Option<&str>) -> Option<PathBuf> {
+    if let Some(histfile) = std::env::var_os("HISTFILE") {
+        if !histfile.is_empty() {
+            return Some(PathBuf::from(histfile));
+        }
+    }
+    if shell_name(shell) == Some("fish") {
+        return Some(default_fish_history_file());
+    }
+    None
+}
+
+fn default_fish_history_file() -> PathBuf {
+    if let Some(xdg_data_home) = std::env::var_os("XDG_DATA_HOME") {
+        return PathBuf::from(xdg_data_home).join("fish").join("fish_history");
+    }
+    if let Some(home) = std::env::var_os("HOME") {
+        let modern = PathBuf::from(&home)
+            .join(".local")
+            .join("share")
+            .join("fish")
+            .join("fish_history");
+        if modern.exists() {
+            return modern;
+        }
+        let legacy = PathBuf::from(home).join(".fish_history");
+        if legacy.exists() {
+            return legacy;
+        }
+        return modern;
+    }
+    PathBuf::from("fish_history")
+}
+
+fn shell_name(shell: Option<&str>) -> Option<&str> {
+    shell
+        .and_then(|shell| Path::new(shell).file_name())
+        .and_then(|name| name.to_str())
 }
 
 fn history_format(shell: Option<&str>, histfile: &Path) -> HistoryFormat {
-    if shell
-        .and_then(|shell| Path::new(shell).file_name())
-        .and_then(|name| name.to_str())
-        != Some("zsh")
-    {
-        return HistoryFormat::Plain;
+    if shell_name(shell) == Some("fish") || is_fish_history(histfile) {
+        return HistoryFormat::Fish;
     }
-    if is_zsh_extended_history(histfile) {
+
+    if shell_name(shell) == Some("zsh") && is_zsh_extended_history(histfile) {
         HistoryFormat::ZshExtended
     } else {
         HistoryFormat::Plain
     }
+}
+
+fn is_fish_history(histfile: &Path) -> bool {
+    if histfile
+        .file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name == "fish_history")
+    {
+        return true;
+    }
+
+    let file = match std::fs::File::open(histfile) {
+        Ok(file) => file,
+        Err(_) => return false,
+    };
+
+    for line in BufReader::new(file).lines().map_while(Result::ok).take(20) {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        return trimmed.starts_with("- cmd: ");
+    }
+    false
 }
 
 fn is_zsh_extended_history(histfile: &Path) -> bool {
@@ -128,7 +190,19 @@ fn format_history_entry(format: HistoryFormat, command_line: &str, unix_time: u6
     match format {
         HistoryFormat::Plain => format!("{command_line}\n"),
         HistoryFormat::ZshExtended => format!(": {unix_time}:0;{command_line}\n"),
+        HistoryFormat::Fish => {
+            let escaped = escape_fish_history_value(command_line);
+            format!("- cmd: {escaped}\n  when: {unix_time}\n")
+        }
     }
+}
+
+fn escape_fish_history_value(value: &str) -> String {
+    value
+        .replace('\\', "\\\\")
+        .replace('\n', "\\n")
+        .replace('\r', "\\r")
+        .replace('\t', "\\t")
 }
 
 pub fn preview_command(runner: Runner, task: &str, passthrough: &[String]) -> String {
@@ -226,6 +300,18 @@ mod tests {
     }
 
     #[test]
+    fn format_history_entry_for_fish() {
+        let line = format_history_entry(HistoryFormat::Fish, "just build", 1234);
+        assert_eq!(line, "- cmd: just build\n  when: 1234\n");
+    }
+
+    #[test]
+    fn format_history_entry_for_fish_escapes_backslashes() {
+        let line = format_history_entry(HistoryFormat::Fish, r"cd Drop\ Box/", 1234);
+        assert_eq!(line, "- cmd: cd Drop\\\\ Box/\n  when: 1234\n");
+    }
+
+    #[test]
     fn history_format_detects_zsh_extended_history() {
         let dir = tempdir().unwrap();
         let hist = dir.path().join(".zsh_history");
@@ -247,6 +333,24 @@ mod tests {
             history_format(Some("/bin/bash"), &hist),
             HistoryFormat::Plain
         );
+    }
+
+    #[test]
+    fn history_format_detects_fish_history_from_shell() {
+        let dir = tempdir().unwrap();
+        let hist = dir.path().join(".history");
+        std::fs::write(&hist, "just build\n").unwrap();
+
+        assert_eq!(history_format(Some("/opt/homebrew/bin/fish"), &hist), HistoryFormat::Fish);
+    }
+
+    #[test]
+    fn history_format_detects_fish_history_from_file_name() {
+        let dir = tempdir().unwrap();
+        let hist = dir.path().join("fish_history");
+        std::fs::write(&hist, "just build\n").unwrap();
+
+        assert_eq!(history_format(Some("/bin/bash"), &hist), HistoryFormat::Fish);
     }
 
     #[test]

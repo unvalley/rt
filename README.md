@@ -66,7 +66,8 @@ Add `--args` if you also want to enter optional arguments interactively.
 rt [--args] <task> [-- args...]
 ```
 
-Executed commands are appended to shell history as a best effort when `HISTFILE` is available.
+Executed commands are appended to shell history as a best effort.
+`HISTFILE` is used when available, and `fish` is supported via its default history file path.
 
 ### Why?
 

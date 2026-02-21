@@ -144,7 +144,15 @@ pub fn read_default() -> io::Result<Vec<StoredRecord>> {
 fn default_history_paths() -> Vec<PathBuf> {
     let xdg_state_home = env::var_os("XDG_STATE_HOME").map(PathBuf::from);
     let home = env::var_os("HOME").map(PathBuf::from);
-    history_path_candidates(xdg_state_home.as_deref(), home.as_deref())
+    let local_app_data = env::var_os("LOCALAPPDATA").map(PathBuf::from);
+    let user_profile = env::var_os("USERPROFILE").map(PathBuf::from);
+    history_path_candidates_for_platform(
+        xdg_state_home.as_deref(),
+        home.as_deref(),
+        local_app_data.as_deref(),
+        user_profile.as_deref(),
+        cfg!(windows),
+    )
 }
 
 fn read_from_paths(paths: Vec<PathBuf>) -> io::Result<Vec<StoredRecord>> {
@@ -176,24 +184,55 @@ fn read_from_paths(paths: Vec<PathBuf>) -> io::Result<Vec<StoredRecord>> {
     Ok(all_records)
 }
 
-pub fn history_path_candidates(xdg_state_home: Option<&Path>, home: Option<&Path>) -> Vec<PathBuf> {
+fn history_path_candidates_for_platform(
+    xdg_state_home: Option<&Path>,
+    home: Option<&Path>,
+    local_app_data: Option<&Path>,
+    user_profile: Option<&Path>,
+    is_windows: bool,
+) -> Vec<PathBuf> {
     let mut paths = Vec::new();
     if let Some(base) = xdg_state_home {
-        paths.push(base.join("rt").join("history.jsonl"));
+        push_unique_path(&mut paths, base.join("rt").join("history.jsonl"));
     }
-    if let Some(base) = home {
-        paths.push(
+
+    if is_windows {
+        if let Some(base) = local_app_data {
+            push_unique_path(&mut paths, base.join("rt").join("history.jsonl"));
+        } else if let Some(base) = user_profile {
+            push_unique_path(
+                &mut paths,
+                base.join("AppData")
+                    .join("Local")
+                    .join("rt")
+                    .join("history.jsonl"),
+            );
+        }
+
+        if let Some(base) = home {
+            push_unique_path(&mut paths, base.join(".rt").join("history.jsonl"));
+        }
+    } else if let Some(base) = home {
+        push_unique_path(
+            &mut paths,
             base.join(".local")
                 .join("state")
                 .join("rt")
                 .join("history.jsonl"),
         );
-        paths.push(base.join(".rt").join("history.jsonl"));
+        push_unique_path(&mut paths, base.join(".rt").join("history.jsonl"));
     }
+
     if paths.is_empty() {
-        paths.push(PathBuf::from(".rt").join("history.jsonl"));
+        push_unique_path(&mut paths, PathBuf::from(".rt").join("history.jsonl"));
     }
     paths
+}
+
+fn push_unique_path(paths: &mut Vec<PathBuf>, path: PathBuf) {
+    if !paths.iter().any(|existing| existing == &path) {
+        paths.push(path);
+    }
 }
 
 fn current_timestamp() -> String {
@@ -220,8 +259,13 @@ mod tests {
 
     #[test]
     fn history_path_candidates_include_home_fallback() {
-        let paths =
-            history_path_candidates(Some(Path::new("/tmp/state")), Some(Path::new("/tmp/home")));
+        let paths = history_path_candidates_for_platform(
+            Some(Path::new("/tmp/state")),
+            Some(Path::new("/tmp/home")),
+            None,
+            None,
+            false,
+        );
         assert_eq!(
             paths,
             vec![
@@ -234,7 +278,13 @@ mod tests {
 
     #[test]
     fn history_path_candidates_fall_back_without_xdg() {
-        let paths = history_path_candidates(None, Some(Path::new("/tmp/home")));
+        let paths = history_path_candidates_for_platform(
+            None,
+            Some(Path::new("/tmp/home")),
+            None,
+            None,
+            false,
+        );
         assert_eq!(
             paths,
             vec![
@@ -368,7 +418,43 @@ mod tests {
 
     #[test]
     fn history_path_candidates_fall_back_to_dot_rt_without_home() {
-        let paths = history_path_candidates(None, None);
+        let paths = history_path_candidates_for_platform(None, None, None, None, false);
         assert_eq!(paths, vec![PathBuf::from(".rt/history.jsonl")]);
+    }
+
+    #[test]
+    fn history_path_candidates_windows_prefers_local_app_data() {
+        let paths = history_path_candidates_for_platform(
+            Some(Path::new("C:/xdg-state")),
+            Some(Path::new("C:/home")),
+            Some(Path::new("C:/Users/Alice/AppData/Local")),
+            Some(Path::new("C:/Users/Alice")),
+            true,
+        );
+        assert_eq!(
+            paths,
+            vec![
+                PathBuf::from("C:/xdg-state/rt/history.jsonl"),
+                PathBuf::from("C:/Users/Alice/AppData/Local/rt/history.jsonl"),
+                PathBuf::from("C:/home/.rt/history.jsonl"),
+            ]
+        );
+    }
+
+    #[test]
+    fn history_path_candidates_windows_uses_user_profile_when_local_app_data_missing() {
+        let paths = history_path_candidates_for_platform(
+            None,
+            None,
+            None,
+            Some(Path::new("C:/Users/Alice")),
+            true,
+        );
+        assert_eq!(
+            paths,
+            vec![PathBuf::from(
+                "C:/Users/Alice/AppData/Local/rt/history.jsonl"
+            )]
+        );
     }
 }

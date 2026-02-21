@@ -10,24 +10,29 @@ use time::format_description::well_known::Rfc3339;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HistoryRecord {
-    // Schema version keeps old JSONL lines readable after future format changes.
-    pub v: u8,
+    // Schema version keeps JSONL lines readable after future format changes.
+    #[serde(rename = "version", alias = "v")]
+    pub schema_version: u8,
     // Timestamp is required for ordering and for showing when a command was run.
-    pub ts: String,
+    #[serde(rename = "timestamp", alias = "ts")]
+    pub timestamp: String,
     // Command text is required so users can inspect and re-run the same command.
-    pub cmd: String,
+    #[serde(rename = "command", alias = "cmd")]
+    pub command: String,
     // Working directory is required because command behavior depends on CWD.
-    pub cwd: String,
+    #[serde(rename = "working_directory", alias = "cwd")]
+    pub working_directory: String,
     // Exit code is required to distinguish successful and failed runs.
-    #[serde(rename = "exit")]
+    #[serde(rename = "exit_code", alias = "exit")]
     pub exit_code: i32,
     // Duration enables quick performance feedback without storing full traces.
+    #[serde(rename = "duration_ms")]
     pub duration_ms: u64,
 }
 
 pub struct RecordInput<'a> {
     pub command: &'a str,
-    pub cwd: &'a Path,
+    pub working_directory: &'a Path,
     pub exit_code: i32,
     pub duration_ms: u64,
 }
@@ -35,10 +40,10 @@ pub struct RecordInput<'a> {
 impl HistoryRecord {
     pub fn from_input(input: RecordInput<'_>) -> Self {
         Self {
-            v: 1,
-            ts: current_timestamp(),
-            cmd: input.command.to_string(),
-            cwd: input.cwd.to_string_lossy().into_owned(),
+            schema_version: 1,
+            timestamp: current_timestamp(),
+            command: input.command.to_string(),
+            working_directory: input.working_directory.to_string_lossy().into_owned(),
             exit_code: input.exit_code,
             duration_ms: input.duration_ms,
         }
@@ -151,13 +156,13 @@ fn read_from_paths(paths: Vec<PathBuf>) -> io::Result<Vec<StoredRecord>> {
     }
 
     all_records.sort_by(|a, b| {
-        let a_ts = OffsetDateTime::parse(&a.record.ts, &Rfc3339).ok();
-        let b_ts = OffsetDateTime::parse(&b.record.ts, &Rfc3339).ok();
+        let a_ts = OffsetDateTime::parse(&a.record.timestamp, &Rfc3339).ok();
+        let b_ts = OffsetDateTime::parse(&b.record.timestamp, &Rfc3339).ok();
         match (a_ts, b_ts) {
             (Some(a_ts), Some(b_ts)) => a_ts.cmp(&b_ts),
             (Some(_), None) => std::cmp::Ordering::Less,
             (None, Some(_)) => std::cmp::Ordering::Greater,
-            (None, None) => a.record.ts.cmp(&b.record.ts),
+            (None, None) => a.record.timestamp.cmp(&b.record.timestamp),
         }
     });
     Ok(all_records)
@@ -196,10 +201,10 @@ mod tests {
 
     fn sample_record(ts: &str, cmd: &str, exit_code: i32) -> HistoryRecord {
         HistoryRecord {
-            v: 1,
-            ts: ts.to_string(),
-            cmd: cmd.to_string(),
-            cwd: "/repo".to_string(),
+            schema_version: 1,
+            timestamp: ts.to_string(),
+            command: cmd.to_string(),
+            working_directory: "/repo".to_string(),
             exit_code,
             duration_ms: 120,
         }
@@ -236,16 +241,16 @@ mod tests {
         let cwd = PathBuf::from("/repo");
         let record = HistoryRecord::from_input(RecordInput {
             command: "just test",
-            cwd: &cwd,
+            working_directory: &cwd,
             exit_code: 7,
             duration_ms: 34,
         });
-        assert_eq!(record.v, 1);
-        assert_eq!(record.cmd, "just test");
-        assert_eq!(record.cwd, "/repo");
+        assert_eq!(record.schema_version, 1);
+        assert_eq!(record.command, "just test");
+        assert_eq!(record.working_directory, "/repo");
         assert_eq!(record.exit_code, 7);
         assert_eq!(record.duration_ms, 34);
-        assert!(record.ts.contains('T'));
+        assert!(record.timestamp.contains('T'));
     }
 
     #[test]
@@ -271,7 +276,7 @@ mod tests {
             &history_path,
             concat!(
                 "not-json\n",
-                "{\"v\":1,\"ts\":\"2026-02-21T12:34:56+09:00\",\"cmd\":\"make build\",\"cwd\":\"/repo\",\"exit\":0,\"duration_ms\":10}\n"
+                "{\"version\":1,\"timestamp\":\"2026-02-21T12:34:56+09:00\",\"command\":\"make build\",\"working_directory\":\"/repo\",\"exit_code\":0,\"duration_ms\":10}\n"
             ),
         )
         .unwrap();
@@ -279,7 +284,7 @@ mod tests {
         let store = HistoryStore::new(history_path);
         let records = store.read_all().unwrap();
         assert_eq!(records.len(), 1);
-        assert_eq!(records[0].record.cmd, "make build");
+        assert_eq!(records[0].record.command, "make build");
     }
 
     #[test]
@@ -302,7 +307,7 @@ mod tests {
         let records = read_from_paths(vec![first, second]).unwrap();
         let commands: Vec<String> = records
             .into_iter()
-            .map(|record| record.record.cmd)
+            .map(|record| record.record.command)
             .collect();
         assert_eq!(
             commands,
@@ -328,7 +333,24 @@ mod tests {
 
         let records = read_from_paths(vec![unreadable, valid]).unwrap();
         assert_eq!(records.len(), 1);
-        assert_eq!(records[0].record.cmd, "make e");
+        assert_eq!(records[0].record.command, "make e");
+    }
+
+    #[test]
+    fn read_all_accepts_legacy_short_field_names() {
+        let dir = tempdir().unwrap();
+        let history_path = dir.path().join("history.jsonl");
+        fs::write(
+            &history_path,
+            "{\"v\":1,\"ts\":\"2026-02-21T12:34:56+09:00\",\"cmd\":\"make build\",\"cwd\":\"/repo\",\"exit\":0,\"duration_ms\":10}\n",
+        )
+        .unwrap();
+
+        let records = HistoryStore::new(history_path).read_all().unwrap();
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].record.schema_version, 1);
+        assert_eq!(records[0].record.command, "make build");
+        assert_eq!(records[0].record.working_directory, "/repo");
     }
 
     #[test]

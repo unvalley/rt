@@ -124,11 +124,11 @@ const HISTORY_SELECT_LIMIT: usize = 200;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct HistoryChoice {
-    ts: String,
+    timestamp: String,
     exit_code: i32,
     duration_ms: u64,
-    cwd: String,
-    cmd: String,
+    working_directory: String,
+    command: String,
 }
 
 impl fmt::Display for HistoryChoice {
@@ -136,11 +136,11 @@ impl fmt::Display for HistoryChoice {
         write!(
             f,
             "{}  exit={}  {}ms  {}  {}",
-            format_history_timestamp(&self.ts),
+            format_history_timestamp(&self.timestamp),
             self.exit_code,
             self.duration_ms,
-            self.cwd,
-            self.cmd
+            self.working_directory,
+            self.command
         )
     }
 }
@@ -161,18 +161,18 @@ fn rerun_from_history(fallback_cwd: &Path, verbose: bool) -> Result<i32, RtError
         Err(err) => return Err(RtError::Prompt(err)),
     };
 
-    let execution_cwd = resolve_history_cwd(&selected.cwd, fallback_cwd);
-    if verbose && execution_cwd != selected.cwd {
+    let execution_cwd = resolve_history_cwd(&selected.working_directory, fallback_cwd);
+    if verbose && execution_cwd != selected.working_directory {
         eprintln!(
             "history cwd not found, falling back to current directory: {}",
             execution_cwd.to_string_lossy()
         );
     }
 
-    let result = exec::run_command_line(&selected.cmd, &execution_cwd)?;
+    let result = exec::run_command_line(&selected.command, &execution_cwd)?;
     if let Err(err) = history::append_default(history::RecordInput {
         command: &result.command,
-        cwd: &execution_cwd,
+        working_directory: &execution_cwd,
         exit_code: result.exit_code,
         duration_ms: result.duration_ms,
     }) && verbose
@@ -189,11 +189,11 @@ fn build_history_choices(records: &[history::StoredRecord], limit: usize) -> Vec
         .rev()
         .take(limit)
         .map(|entry| HistoryChoice {
-            ts: entry.record.ts.clone(),
+            timestamp: entry.record.timestamp.clone(),
             exit_code: entry.record.exit_code,
             duration_ms: entry.record.duration_ms,
-            cwd: entry.record.cwd.clone(),
-            cmd: entry.record.cmd.clone(),
+            working_directory: entry.record.working_directory.clone(),
+            command: entry.record.command.clone(),
         })
         .collect()
 }
@@ -225,7 +225,7 @@ fn execute_and_record(
     let result = exec::run(detection.runner, task, passthrough, cwd)?;
     if let Err(err) = history::append_default(history::RecordInput {
         command: &result.command,
-        cwd,
+        working_directory: cwd,
         exit_code: result.exit_code,
         duration_ms: result.duration_ms,
     }) && verbose
@@ -499,10 +499,10 @@ mod tests {
             history::StoredRecord {
                 raw: "a".to_string(),
                 record: history::HistoryRecord {
-                    v: 1,
-                    ts: "2026-02-21T12:00:00+09:00".to_string(),
-                    cmd: "make a".to_string(),
-                    cwd: "/repo".to_string(),
+                    schema_version: 1,
+                    timestamp: "2026-02-21T12:00:00+09:00".to_string(),
+                    command: "make a".to_string(),
+                    working_directory: "/repo".to_string(),
                     exit_code: 0,
                     duration_ms: 10,
                 },
@@ -510,10 +510,10 @@ mod tests {
             history::StoredRecord {
                 raw: "b".to_string(),
                 record: history::HistoryRecord {
-                    v: 1,
-                    ts: "2026-02-21T12:01:00+09:00".to_string(),
-                    cmd: "make b".to_string(),
-                    cwd: "/repo".to_string(),
+                    schema_version: 1,
+                    timestamp: "2026-02-21T12:01:00+09:00".to_string(),
+                    command: "make b".to_string(),
+                    working_directory: "/repo".to_string(),
                     exit_code: 1,
                     duration_ms: 20,
                 },
@@ -522,7 +522,7 @@ mod tests {
 
         let choices = build_history_choices(&records, 1);
         assert_eq!(choices.len(), 1);
-        assert_eq!(choices[0].cmd, "make b");
+        assert_eq!(choices[0].command, "make b");
         assert_eq!(choices[0].exit_code, 1);
     }
 

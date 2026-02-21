@@ -71,10 +71,7 @@ impl HistoryStore {
             fs::create_dir_all(parent)?;
         }
 
-        let mut file = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&self.path)?;
+        let mut file = open_history_file_for_append(&self.path)?;
         file.try_lock_exclusive()?;
 
         let json =
@@ -106,6 +103,17 @@ impl HistoryStore {
 
         Ok(records)
     }
+}
+
+fn open_history_file_for_append(path: &Path) -> io::Result<std::fs::File> {
+    let mut options = OpenOptions::new();
+    options.create(true).append(true).read(true);
+    #[cfg(windows)]
+    {
+        // Windows can reject file locking on append-only handles; keep write access explicit.
+        options.write(true);
+    }
+    options.open(path)
 }
 
 pub fn append_default(input: RecordInput<'_>) -> io::Result<()> {

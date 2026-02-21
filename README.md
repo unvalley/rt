@@ -66,6 +66,22 @@ Add `--args` if you also want to enter optional arguments interactively.
 rt [--args] <task> [-- args...]
 ```
 
+### `rt --history`: rerun from rt-specific history
+
+```sh
+rt --history
+```
+
+Shows recent history as `command + timestamp`, then re-runs the selected command.
+
+History file (JSONL) path priority:
+
+- `XDG_STATE_HOME/rt/history.jsonl` (if `XDG_STATE_HOME` is set)
+- Windows: `%LOCALAPPDATA%/rt/history.jsonl` (fallback: `%USERPROFILE%/AppData/Local/rt/history.jsonl`)
+- Unix-like: `~/.local/state/rt/history.jsonl`
+- Fallback: `~/.rt/history.jsonl`
+- Last fallback: `./.rt/history.jsonl`
+
 ### Why?
 
 There are many task runners available, and different projects use different ones.

@@ -96,11 +96,10 @@ enum HistoryFormat {
 }
 
 fn resolve_history_file(shell: Option<&str>) -> Option<PathBuf> {
-    if let Some(histfile) = std::env::var_os("HISTFILE") {
-        if !histfile.is_empty() {
+    if let Some(histfile) = std::env::var_os("HISTFILE")
+        && !histfile.is_empty() {
             return Some(PathBuf::from(histfile));
         }
-    }
     if shell_name(shell) == Some("fish") {
         return Some(default_fish_history_file());
     }

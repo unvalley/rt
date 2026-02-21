@@ -109,7 +109,9 @@ fn resolve_history_file(shell: Option<&str>) -> Option<PathBuf> {
 
 fn default_fish_history_file() -> PathBuf {
     if let Some(xdg_data_home) = std::env::var_os("XDG_DATA_HOME") {
-        return PathBuf::from(xdg_data_home).join("fish").join("fish_history");
+        return PathBuf::from(xdg_data_home)
+            .join("fish")
+            .join("fish_history");
     }
     if let Some(home) = std::env::var_os("HOME") {
         let modern = PathBuf::from(&home)
@@ -341,7 +343,10 @@ mod tests {
         let hist = dir.path().join(".history");
         std::fs::write(&hist, "just build\n").unwrap();
 
-        assert_eq!(history_format(Some("/opt/homebrew/bin/fish"), &hist), HistoryFormat::Fish);
+        assert_eq!(
+            history_format(Some("/opt/homebrew/bin/fish"), &hist),
+            HistoryFormat::Fish
+        );
     }
 
     #[test]
@@ -350,7 +355,10 @@ mod tests {
         let hist = dir.path().join("fish_history");
         std::fs::write(&hist, "just build\n").unwrap();
 
-        assert_eq!(history_format(Some("/bin/bash"), &hist), HistoryFormat::Fish);
+        assert_eq!(
+            history_format(Some("/bin/bash"), &hist),
+            HistoryFormat::Fish
+        );
     }
 
     #[test]

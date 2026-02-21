@@ -8,6 +8,7 @@ on:
         required: true
 
 permissions:
+  actions: write
   contents: write
 
 jobs:
@@ -24,8 +25,29 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
+      - name: Normalize tag
+        id: normalize
+        run: |
+          version="${{ inputs.version }}"
+          version="${version#v}"
+          echo "tag=v${version}" >> "$GITHUB_OUTPUT"
+
       - name: Bump version and tag
-        run: ./scripts/release.sh "${{ inputs.version }}"
+        run: ./scripts/release.sh "${{ steps.normalize.outputs.tag }}"
 
       - name: Push commit and tag
         run: git push origin HEAD --follow-tags
+
+      - name: Trigger release workflow
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: "release.yml",
+              ref: context.ref.replace("refs/heads/", ""),
+              inputs: {
+                tag: "${{ steps.normalize.outputs.tag }}"
+              }
+            });

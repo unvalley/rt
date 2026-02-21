@@ -22,6 +22,10 @@ Inspired by [antfu/ni](https://github.com/antfu/ni).
 ### Install
 
 ```sh
+brew install unvalley/tap/rt
+```
+
+```sh
 cargo install rt-cli
 ```
 
@@ -29,15 +33,16 @@ cargo install rt-cli
 cargo binstall rt-cli
 ```
 
-Planned:
-
-- homebrew
-- nix
+Planned: nix, homebrew(core, after requirements met), others
 
 ### `rt`: run tasks selectively
 
 ```sh
 rt
+```
+
+```sh
+rt --args
 ```
 
 If a task runner is found, rt shows an interactive task selector:
@@ -52,10 +57,13 @@ If a task runner is found, rt shows an interactive task selector:
 [↑↓ to move, enter to select, type to filter]
 ```
 
+After selecting a task, rt prompts required parameters when defined (for example, in `justfile` recipes).
+Add `--args` if you also want to enter optional arguments interactively.
+
 ### `rt <task>`: run specific task
 
 ```sh
-rt <task> [-- args...]
+rt [--args] <task> [-- args...]
 ```
 
 Executed commands are appended to shell history as a best effort when `HISTFILE` is available.

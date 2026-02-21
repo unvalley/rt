@@ -131,6 +131,41 @@ fn format_history_entry(format: HistoryFormat, command_line: &str, unix_time: u6
     }
 }
 
+pub fn preview_command(runner: Runner, task: &str, passthrough: &[String]) -> String {
+    let mut parts = Vec::new();
+    parts.push(runner_command(runner).to_string());
+    if runner == Runner::CargoMake {
+        parts.push("make".to_string());
+    }
+    if runner == Runner::Mise {
+        parts.push("run".to_string());
+    }
+    parts.push(task.to_string());
+    parts.extend(passthrough.iter().cloned());
+
+    parts
+        .into_iter()
+        .map(|part| quote_shell_arg(&part))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn quote_shell_arg(value: &str) -> String {
+    if value.is_empty() {
+        return "''".to_string();
+    }
+    if value.chars().any(|c| {
+        c.is_whitespace()
+            || matches!(
+                c,
+                '\'' | '"' | '\\' | '$' | '`' | '!' | '&' | '|' | ';' | '<' | '>'
+            )
+    }) {
+        return format!("'{}'", value.replace('\'', "'\\''"));
+    }
+    value.to_string()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -211,6 +246,38 @@ mod tests {
         assert_eq!(
             history_format(Some("/bin/bash"), &hist),
             HistoryFormat::Plain
+        );
+    }
+
+    #[test]
+    fn format_command_preview_renders_simple_command() {
+        let preview = preview_command(Runner::Justfile, "test", &["--verbose".to_string()]);
+        assert_eq!(preview, "just test --verbose");
+    }
+
+    #[test]
+    fn format_command_preview_quotes_special_args() {
+        let preview = preview_command(
+            Runner::Justfile,
+            "test",
+            &[
+                "hello world".to_string(),
+                "a'b".to_string(),
+                "$HOME".to_string(),
+            ],
+        );
+        assert_eq!(preview, "just test 'hello world' 'a'\\''b' '$HOME'");
+    }
+
+    #[test]
+    fn preview_command_handles_runner_specific_prefixes() {
+        assert_eq!(
+            preview_command(Runner::Mise, "build", &[]),
+            "mise run build"
+        );
+        assert_eq!(
+            preview_command(Runner::CargoMake, "build", &[]),
+            "cargo make build"
         );
     }
 }

@@ -3,6 +3,11 @@ use std::collections::BTreeMap;
 use crate::tasks::TaskItem;
 
 pub(super) fn parse(output: &str) -> Vec<TaskItem> {
+    let makefile_source = read_makefile_source_from_disk();
+    parse_with_makefile_source(output, makefile_source.as_deref())
+}
+
+fn parse_with_makefile_source(output: &str, makefile_source: Option<&str>) -> Vec<TaskItem> {
     let has_files_section = output
         .lines()
         .any(|line| line.trim_start().starts_with("# Files"));
@@ -74,6 +79,17 @@ pub(super) fn parse(output: &str) -> Vec<TaskItem> {
         }
     }
 
+    if let Some(source) = makefile_source {
+        let descriptions = parse_makefile_descriptions(source);
+        for (name, description) in &mut tasks {
+            if description.is_none() {
+                if let Some(source_desc) = descriptions.get(name) {
+                    *description = Some(source_desc.clone());
+                }
+            }
+        }
+    }
+
     tasks
         .into_iter()
         .map(|(name, description)| TaskItem { name, description })
@@ -104,6 +120,82 @@ fn parse_comment_line(line: &str) -> Option<String> {
         return None;
     }
     Some(comment.to_string())
+}
+
+fn read_makefile_source_from_disk() -> Option<String> {
+    let cwd = std::env::current_dir().ok()?;
+    for name in ["Makefile", "makefile", "GNUmakefile"] {
+        let path = cwd.join(name);
+        if path.is_file() {
+            return std::fs::read_to_string(path).ok();
+        }
+    }
+    None
+}
+
+fn parse_makefile_descriptions(source: &str) -> BTreeMap<String, String> {
+    let mut descriptions = BTreeMap::new();
+    let mut pending_desc: Option<String> = None;
+
+    for line in source.lines() {
+        let line = line.trim_end();
+        if line.is_empty() {
+            pending_desc = None;
+            continue;
+        }
+
+        let trimmed = line.trim_start();
+        if trimmed.starts_with('#') {
+            pending_desc = parse_comment_line(trimmed);
+            continue;
+        }
+        if line.starts_with('\t') || line.starts_with(' ') {
+            pending_desc = None;
+            continue;
+        }
+
+        let (target, rest) = match trimmed.split_once(':') {
+            Some(parts) => parts,
+            None => {
+                pending_desc = None;
+                continue;
+            }
+        };
+
+        if rest.trim_start().starts_with('=') {
+            pending_desc = None;
+            continue;
+        }
+
+        let target_names: Vec<&str> = target
+            .split_whitespace()
+            .map(str::trim)
+            .filter(|name| is_make_target_name(name))
+            .collect();
+
+        if target_names.is_empty() {
+            pending_desc = None;
+            continue;
+        }
+
+        let inline_desc = trimmed
+            .split_once(':')
+            .and_then(|(_, value)| value.split_once('#'))
+            .map(|(_, comment)| comment.trim())
+            .filter(|desc| !desc.is_empty())
+            .map(str::to_string);
+
+        let description = inline_desc.or_else(|| pending_desc.take());
+        pending_desc = None;
+
+        if let Some(description) = description {
+            for target_name in target_names {
+                descriptions.insert(target_name.to_string(), description.clone());
+            }
+        }
+    }
+
+    descriptions
 }
 
 #[cfg(test)]
@@ -162,5 +254,48 @@ build: # build main
         assert_eq!(tasks.len(), 1);
         assert_eq!(tasks[0].name, "build");
         assert_eq!(tasks[0].description.as_deref(), Some("build main"));
+    }
+
+    #[test]
+    fn parse_make_uses_makefile_comments_as_description() {
+        let output = "\
+# Files
+build:
+\tcc *.c -o main
+test-all: build
+\t./test --all
+
+# Finished Make data base
+";
+        let makefile_source = "\
+# build main
+build:
+\tcc *.c -o main
+
+# test everything
+test-all: build
+\t./test --all
+";
+        let tasks = parse_with_makefile_source(output, Some(makefile_source));
+        assert_eq!(tasks.len(), 2);
+        assert_eq!(tasks[0].name, "build");
+        assert_eq!(tasks[0].description.as_deref(), Some("build main"));
+        assert_eq!(tasks[1].name, "test-all");
+        assert_eq!(tasks[1].description.as_deref(), Some("test everything"));
+    }
+
+    #[test]
+    fn parse_makefile_descriptions_ignores_variable_assignment() {
+        let source = "\
+# should not attach to variable
+FOO := bar
+
+# build main
+build:
+\tcc *.c -o main
+";
+        let descriptions = parse_makefile_descriptions(source);
+        assert_eq!(descriptions.get("FOO"), None);
+        assert_eq!(descriptions.get("build"), Some(&"build main".to_string()));
     }
 }

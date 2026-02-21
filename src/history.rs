@@ -10,12 +10,18 @@ use time::format_description::well_known::Rfc3339;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HistoryRecord {
+    // Schema version keeps old JSONL lines readable after future format changes.
     pub v: u8,
+    // Timestamp is required for ordering and for showing when a command was run.
     pub ts: String,
+    // Command text is required so users can inspect and re-run the same command.
     pub cmd: String,
+    // Working directory is required because command behavior depends on CWD.
     pub cwd: String,
+    // Exit code is required to distinguish successful and failed runs.
     #[serde(rename = "exit")]
     pub exit_code: i32,
+    // Duration enables quick performance feedback without storing full traces.
     pub duration_ms: u64,
 }
 

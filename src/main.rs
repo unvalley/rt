@@ -162,7 +162,7 @@ fn rerun_from_history(fallback_cwd: &Path, verbose: bool) -> Result<i32, RtError
     };
 
     let execution_cwd = resolve_history_cwd(&selected.cwd, fallback_cwd);
-    if verbose && execution_cwd != PathBuf::from(&selected.cwd) {
+    if verbose && execution_cwd != selected.cwd {
         eprintln!(
             "history cwd not found, falling back to current directory: {}",
             execution_cwd.to_string_lossy()
@@ -175,10 +175,9 @@ fn rerun_from_history(fallback_cwd: &Path, verbose: bool) -> Result<i32, RtError
         cwd: &execution_cwd,
         exit_code: result.exit_code,
         duration_ms: result.duration_ms,
-    }) {
-        if verbose {
-            eprintln!("failed to write rt history: {err}");
-        }
+    }) && verbose
+    {
+        eprintln!("failed to write rt history: {err}");
     }
 
     Ok(result.exit_code)
@@ -232,10 +231,9 @@ fn execute_and_record(
         exit_code: result.exit_code,
         duration_ms: result.duration_ms,
         runner_file: Some(detection.runner_file.as_path()),
-    }) {
-        if verbose {
-            eprintln!("failed to write rt history: {err}");
-        }
+    }) && verbose
+    {
+        eprintln!("failed to write rt history: {err}");
     }
 
     Ok(result.exit_code)

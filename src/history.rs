@@ -167,7 +167,7 @@ fn append_record_default(record: &HistoryRecord) -> io::Result<()> {
 
     for path in candidates {
         let store = HistoryStore::new(path);
-        match store.append(&record) {
+        match store.append(record) {
             Ok(()) => return Ok(()),
             Err(err) if err.kind() == io::ErrorKind::WouldBlock => return Err(err),
             Err(err) => last_error = Some(err),

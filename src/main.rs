@@ -125,7 +125,6 @@ const HISTORY_SELECT_LIMIT: usize = 200;
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct HistoryChoice {
     timestamp: String,
-    exit_code: i32,
     working_directory: String,
     command: String,
 }
@@ -134,11 +133,9 @@ impl fmt::Display for HistoryChoice {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "{}  exit={}  {}  {}",
-            format_history_timestamp(&self.timestamp),
-            self.exit_code,
-            self.working_directory,
-            self.command
+            "{}  {}",
+            self.command,
+            format_history_timestamp(&self.timestamp)
         )
     }
 }
@@ -187,7 +184,6 @@ fn build_history_choices(records: &[history::StoredRecord], limit: usize) -> Vec
         .take(limit)
         .map(|entry| HistoryChoice {
             timestamp: entry.record.timestamp.clone(),
-            exit_code: entry.record.exit_code,
             working_directory: entry.record.working_directory.clone(),
             command: entry.record.command.clone(),
         })
@@ -516,7 +512,6 @@ mod tests {
         let choices = build_history_choices(&records, 1);
         assert_eq!(choices.len(), 1);
         assert_eq!(choices[0].command, "make b");
-        assert_eq!(choices[0].exit_code, 1);
     }
 
     #[test]
@@ -531,6 +526,19 @@ mod tests {
         assert_eq!(
             format_history_timestamp("2026-02-21T12:34:56+09:00"),
             "2026-02-21 12:34:56".to_string()
+        );
+    }
+
+    #[test]
+    fn history_choice_display_shows_only_command_and_timestamp() {
+        let choice = HistoryChoice {
+            timestamp: "2026-02-21T12:34:56+09:00".to_string(),
+            working_directory: "/repo".to_string(),
+            command: "make build".to_string(),
+        };
+        assert_eq!(
+            choice.to_string(),
+            "make build  2026-02-21 12:34:56".to_string()
         );
     }
 

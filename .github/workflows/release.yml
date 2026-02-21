@@ -110,6 +110,40 @@ jobs:
     runs-on: ubuntu-latest
     needs: build
     steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: refs/tags/${{ env.TAG_NAME }}
+
+      - name: Build release notes
+        shell: bash
+        run: |
+          tag="${TAG_NAME}"
+          repo_url="https://github.com/${GITHUB_REPOSITORY}"
+          git fetch --tags --force
+          previous_tag="$(git tag --list 'v*' --sort=-v:refname | grep -Fxv "${tag}" | head -n 1 || true)"
+          if [[ -n "${previous_tag}" ]]; then
+            range="${previous_tag}..${tag}"
+            compare_link="${repo_url}/compare/${previous_tag}...${tag}"
+          else
+            range="${tag}"
+            compare_link="(first release)"
+          fi
+
+          {
+            echo "## Release Summary"
+            echo "- Compare: ${compare_link}"
+            echo ""
+            echo "## Commits"
+            commits="$(git log --no-merges --pretty='- %s (%h)' "${range}")"
+            if [[ -z "${commits}" ]]; then
+              echo "- No commits found"
+            else
+              echo "${commits}"
+            fi
+          } > RELEASE_NOTES.md
+
       - name: Download Artifacts
         uses: actions/download-artifact@v4
         with:
@@ -120,6 +154,9 @@ jobs:
         with:
           files: dist/**/*.tgz
           tag_name: ${{ env.TAG_NAME }}
+          generate_release_notes: true
+          body_path: RELEASE_NOTES.md
+          append_body: true
 
   publish_crates:
     name: Publish to crates.io

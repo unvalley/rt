@@ -1,6 +1,5 @@
 use std::path::Path;
 use std::process::Command;
-use std::time::Instant;
 
 use crate::RtError;
 use crate::detect::{Runner, runner_command};
@@ -8,7 +7,6 @@ use crate::detect::{Runner, runner_command};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RunResult {
     pub exit_code: i32,
-    pub duration_ms: u64,
     pub command: String,
 }
 
@@ -23,7 +21,6 @@ pub fn run(
         command.arg("run");
     }
     let command_preview = preview_command(runner, task, passthrough);
-    let started_at = Instant::now();
     let status = command
         .arg(task)
         .args(passthrough)
@@ -33,7 +30,6 @@ pub fn run(
 
     Ok(RunResult {
         exit_code: status.code().unwrap_or(2),
-        duration_ms: started_at.elapsed().as_millis() as u64,
         command: command_preview,
     })
 }
@@ -54,7 +50,6 @@ pub fn run_command_line(command: &str, cwd: &Path) -> Result<RunResult, RtError>
         });
     }
 
-    let started_at = Instant::now();
     let status = Command::new(program)
         .args(args)
         .current_dir(cwd)
@@ -63,7 +58,6 @@ pub fn run_command_line(command: &str, cwd: &Path) -> Result<RunResult, RtError>
 
     Ok(RunResult {
         exit_code: status.code().unwrap_or(2),
-        duration_ms: started_at.elapsed().as_millis() as u64,
         command: command.to_string(),
     })
 }

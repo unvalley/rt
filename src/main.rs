@@ -126,7 +126,6 @@ const HISTORY_SELECT_LIMIT: usize = 200;
 struct HistoryChoice {
     timestamp: String,
     exit_code: i32,
-    duration_ms: u64,
     working_directory: String,
     command: String,
 }
@@ -135,10 +134,9 @@ impl fmt::Display for HistoryChoice {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "{}  exit={}  {}ms  {}  {}",
+            "{}  exit={}  {}  {}",
             format_history_timestamp(&self.timestamp),
             self.exit_code,
-            self.duration_ms,
             self.working_directory,
             self.command
         )
@@ -174,7 +172,6 @@ fn rerun_from_history(fallback_cwd: &Path, verbose: bool) -> Result<i32, RtError
         command: &result.command,
         working_directory: &execution_cwd,
         exit_code: result.exit_code,
-        duration_ms: result.duration_ms,
     }) && verbose
     {
         eprintln!("failed to write rt history: {err}");
@@ -191,7 +188,6 @@ fn build_history_choices(records: &[history::StoredRecord], limit: usize) -> Vec
         .map(|entry| HistoryChoice {
             timestamp: entry.record.timestamp.clone(),
             exit_code: entry.record.exit_code,
-            duration_ms: entry.record.duration_ms,
             working_directory: entry.record.working_directory.clone(),
             command: entry.record.command.clone(),
         })
@@ -227,7 +223,6 @@ fn execute_and_record(
         command: &result.command,
         working_directory: cwd,
         exit_code: result.exit_code,
-        duration_ms: result.duration_ms,
     }) && verbose
     {
         eprintln!("failed to write rt history: {err}");
@@ -504,7 +499,6 @@ mod tests {
                     command: "make a".to_string(),
                     working_directory: "/repo".to_string(),
                     exit_code: 0,
-                    duration_ms: 10,
                 },
             },
             history::StoredRecord {
@@ -515,7 +509,6 @@ mod tests {
                     command: "make b".to_string(),
                     working_directory: "/repo".to_string(),
                     exit_code: 1,
-                    duration_ms: 20,
                 },
             },
         ];

@@ -25,16 +25,12 @@ pub struct HistoryRecord {
     // Exit code is required to distinguish successful and failed runs.
     #[serde(rename = "exit_code", alias = "exit")]
     pub exit_code: i32,
-    // Duration enables quick performance feedback without storing full traces.
-    #[serde(rename = "duration_ms")]
-    pub duration_ms: u64,
 }
 
 pub struct RecordInput<'a> {
     pub command: &'a str,
     pub working_directory: &'a Path,
     pub exit_code: i32,
-    pub duration_ms: u64,
 }
 
 impl HistoryRecord {
@@ -45,7 +41,6 @@ impl HistoryRecord {
             command: input.command.to_string(),
             working_directory: input.working_directory.to_string_lossy().into_owned(),
             exit_code: input.exit_code,
-            duration_ms: input.duration_ms,
         }
     }
 }
@@ -206,7 +201,6 @@ mod tests {
             command: cmd.to_string(),
             working_directory: "/repo".to_string(),
             exit_code,
-            duration_ms: 120,
         }
     }
 
@@ -243,13 +237,11 @@ mod tests {
             command: "just test",
             working_directory: &cwd,
             exit_code: 7,
-            duration_ms: 34,
         });
         assert_eq!(record.schema_version, 1);
         assert_eq!(record.command, "just test");
         assert_eq!(record.working_directory, "/repo");
         assert_eq!(record.exit_code, 7);
-        assert_eq!(record.duration_ms, 34);
         assert!(record.timestamp.contains('T'));
     }
 
@@ -276,7 +268,7 @@ mod tests {
             &history_path,
             concat!(
                 "not-json\n",
-                "{\"version\":1,\"timestamp\":\"2026-02-21T12:34:56+09:00\",\"command\":\"make build\",\"working_directory\":\"/repo\",\"exit_code\":0,\"duration_ms\":10}\n"
+                "{\"version\":1,\"timestamp\":\"2026-02-21T12:34:56+09:00\",\"command\":\"make build\",\"working_directory\":\"/repo\",\"exit_code\":0}\n"
             ),
         )
         .unwrap();
@@ -342,7 +334,7 @@ mod tests {
         let history_path = dir.path().join("history.jsonl");
         fs::write(
             &history_path,
-            "{\"v\":1,\"ts\":\"2026-02-21T12:34:56+09:00\",\"cmd\":\"make build\",\"cwd\":\"/repo\",\"exit\":0,\"duration_ms\":10}\n",
+            "{\"v\":1,\"ts\":\"2026-02-21T12:34:56+09:00\",\"cmd\":\"make build\",\"cwd\":\"/repo\",\"exit\":0}\n",
         )
         .unwrap();
 

@@ -42,13 +42,12 @@ pub fn select_task(runner: Runner) -> Result<Option<String>, RtError> {
         .collect();
 
     let items_len = items.len();
-    let default_scorer = inquire::Select::<TaskChoice>::DEFAULT_SCORER;
 
     match inquire::Select::new("Select task", items)
         .with_page_size(10)
         .with_scorer(&move |input, option, string_value, idx| {
-            let base = default_scorer(input, option, string_value, idx);
-            score_task(input, &option.name, idx, items_len, base)
+            let _ = string_value;
+            score_task(input, &option.name, idx, items_len)
         })
         .prompt()
     {
@@ -87,7 +86,6 @@ fn score_task(
     task_name: &str,
     idx: usize,
     items_len: usize,
-    base_score: Option<i64>,
 ) -> Option<i64> {
     let input = input.trim();
     if input.is_empty() {
@@ -98,20 +96,18 @@ fn score_task(
     let name_lower = task_name.to_ascii_lowercase();
     let exact = name_lower == input_lower;
     let prefix = !exact && name_lower.starts_with(&input_lower);
+    let contains = !exact && !prefix && name_lower.contains(&input_lower);
 
-    let score = base_score.or_else(|| (exact || prefix).then_some(0))?;
     let boost = if exact {
-        10_000_000
+        10_000_000_i64
     } else if prefix {
-        5_000_000
+        5_000_000_i64
+    } else if contains {
+        1_000_000_i64
     } else {
-        0
+        return None;
     };
-    Some(
-        score
-            .saturating_add(boost)
-            .saturating_add(items_len.saturating_sub(idx) as i64),
-    )
+    Some(boost.saturating_add(items_len.saturating_sub(idx) as i64))
 }
 
 /// Lists tasks for the given runner by invoking its list command.
@@ -168,8 +164,8 @@ mod tests {
     #[test]
     fn score_task_prefers_exact_over_prefix() {
         let items_len = 2;
-        let exact = score_task("format", "format", 1, items_len, Some(0)).unwrap();
-        let prefix = score_task("format", "format-rust", 0, items_len, Some(0)).unwrap();
+        let exact = score_task("format", "format", 1, items_len).unwrap();
+        let prefix = score_task("format", "format-rust", 0, items_len).unwrap();
 
         assert!(exact > prefix);
     }
@@ -177,16 +173,26 @@ mod tests {
     #[test]
     fn score_task_filters_non_matches() {
         let items_len = 1;
-        let score = score_task("fmt", "build", 0, items_len, None);
+        let score = score_task("fmt", "build", 0, items_len);
         assert!(score.is_none());
     }
 
     #[test]
     fn score_task_keeps_stable_order_for_equal_scores() {
         let items_len = 3;
-        let first = score_task("foo", "foobar", 0, items_len, Some(0)).unwrap();
-        let second = score_task("foo", "foobaz", 1, items_len, Some(0)).unwrap();
+        let first = score_task("foo", "foobar", 0, items_len).unwrap();
+        let second = score_task("foo", "foobaz", 1, items_len).unwrap();
 
         assert!(first > second);
+    }
+
+    #[test]
+    fn score_task_does_not_include_fuzzy_only_matches() {
+        let items_len = 2;
+        let exact = score_task("test-unit", "test-unit", 0, items_len);
+        let fuzzy = score_task("test-unit", "test-integration", 1, items_len);
+
+        assert!(exact.is_some());
+        assert!(fuzzy.is_none());
     }
 }

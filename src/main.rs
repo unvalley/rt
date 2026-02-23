@@ -119,7 +119,6 @@ const HISTORY_SELECT_LIMIT: usize = 200;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct HistoryChoice {
-    timestamp: String,
     working_directory: String,
     program: String,
     args: Vec<String>,
@@ -128,12 +127,7 @@ struct HistoryChoice {
 
 impl fmt::Display for HistoryChoice {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{}  {}",
-            self.display_command,
-            format_history_timestamp(&self.timestamp)
-        )
+        write!(f, "{}", self.display_command)
     }
 }
 
@@ -168,7 +162,6 @@ fn build_history_choices(records: &[history::StoredRecord], limit: usize) -> Vec
         .rev()
         .take(limit)
         .map(|entry| HistoryChoice {
-            timestamp: entry.record.timestamp.clone(),
             working_directory: entry.record.working_directory.clone(),
             program: entry.record.program.clone(),
             args: entry.record.args.clone(),
@@ -183,14 +176,6 @@ fn resolve_history_cwd(recorded_cwd: &str, fallback_cwd: &Path) -> PathBuf {
         candidate
     } else {
         fallback_cwd.to_path_buf()
-    }
-}
-
-fn format_history_timestamp(ts: &str) -> String {
-    if ts.len() >= 19 {
-        ts[..19].replace('T', " ")
-    } else {
-        ts.to_string()
     }
 }
 
@@ -502,26 +487,14 @@ mod tests {
     }
 
     #[test]
-    fn format_history_timestamp_truncates_rfc3339() {
-        assert_eq!(
-            format_history_timestamp("2026-02-21T12:34:56+09:00"),
-            "2026-02-21 12:34:56".to_string()
-        );
-    }
-
-    #[test]
-    fn history_choice_display_shows_only_command_and_timestamp() {
+    fn history_choice_display_shows_only_command() {
         let choice = HistoryChoice {
-            timestamp: "2026-02-21T12:34:56+09:00".to_string(),
             working_directory: "/repo".to_string(),
             program: "make".to_string(),
             args: vec!["build".to_string()],
             display_command: "make build".to_string(),
         };
-        assert_eq!(
-            choice.to_string(),
-            "make build  2026-02-21 12:34:56".to_string()
-        );
+        assert_eq!(choice.to_string(), "make build".to_string());
     }
 
     #[test]

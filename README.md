@@ -72,7 +72,7 @@ rt [--args] <task> [-- args...]
 rt --history
 ```
 
-Shows recent history as `command + timestamp`, then re-runs the selected command.
+Shows recent history as `command`, then re-runs the selected command.
 
 History file (JSONL) path priority:
 

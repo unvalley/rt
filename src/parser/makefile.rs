@@ -83,9 +83,10 @@ fn parse_with_makefile_source(output: &str, makefile_source: Option<&str>) -> Ve
         let descriptions = parse_makefile_descriptions(source);
         for (name, description) in &mut tasks {
             if description.is_none()
-                && let Some(source_desc) = descriptions.get(name) {
-                    *description = Some(source_desc.clone());
-                }
+                && let Some(source_desc) = descriptions.get(name)
+            {
+                *description = Some(source_desc.clone());
+            }
         }
     }
 

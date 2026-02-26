@@ -339,7 +339,7 @@ dependencies = [
 
 [[package]]
 name = "rt-cli"
-version = "0.1.8"
+version = "0.1.9"
 dependencies = [
  "bpaf",
  "fs2",

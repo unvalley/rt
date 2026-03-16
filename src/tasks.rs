@@ -1,5 +1,6 @@
 use inquire::error::InquireError;
 use std::fmt;
+use terminal_size::{Width, terminal_size};
 
 use crate::RtError;
 use crate::detect::{Runner, runner_command};
@@ -36,9 +37,12 @@ pub fn select_task(runner: Runner) -> Result<Option<String>, RtError> {
         .max()
         .unwrap_or(0);
 
+    let term_width = terminal_size().map(|(Width(w), _)| w as usize).unwrap_or(80);
+    let show_description = term_width >= 60;
+
     let items: Vec<TaskChoice> = tasks
         .into_iter()
-        .map(|t| TaskChoice::new(t, max_name_len))
+        .map(|t| TaskChoice::new(t, max_name_len, show_description, term_width))
         .collect();
 
     let items_len = items.len();
@@ -63,10 +67,20 @@ struct TaskChoice {
 }
 
 impl TaskChoice {
-    fn new(task: TaskItem, width: usize) -> Self {
-        let display = match task.description {
-            Some(desc) => format!("{:width$}  -  {}", task.name, desc, width = width),
-            None => task.name.clone(),
+    fn new(task: TaskItem, name_width: usize, show_description: bool, term_width: usize) -> Self {
+        let display = match (&task.description, show_description) {
+            (Some(desc), true) => {
+                // "  -  " is 5 chars, inquire prompt prefix is ~4 chars
+                let prefix_len = name_width + 5 + 4;
+                let max_desc_len = term_width.saturating_sub(prefix_len);
+                let truncated_desc = if desc.chars().count() > max_desc_len && max_desc_len > 3 {
+                    format!("{}...", desc.chars().take(max_desc_len - 3).collect::<String>())
+                } else {
+                    desc.clone()
+                };
+                format!("{:width$}  -  {}", task.name, truncated_desc, width = name_width)
+            }
+            _ => task.name.clone(),
         };
         Self {
             name: task.name,

@@ -37,7 +37,9 @@ pub fn select_task(runner: Runner) -> Result<Option<String>, RtError> {
         .max()
         .unwrap_or(0);
 
-    let term_width = terminal_size().map(|(Width(w), _)| w as usize).unwrap_or(80);
+    let term_width = terminal_size()
+        .map(|(Width(w), _)| w as usize)
+        .unwrap_or(80);
     let show_description = term_width >= 60;
 
     let items: Vec<TaskChoice> = tasks
@@ -74,11 +76,19 @@ impl TaskChoice {
                 let prefix_len = name_width + 5 + 4;
                 let max_desc_len = term_width.saturating_sub(prefix_len);
                 let truncated_desc = if desc.chars().count() > max_desc_len && max_desc_len > 3 {
-                    format!("{}...", desc.chars().take(max_desc_len - 3).collect::<String>())
+                    format!(
+                        "{}...",
+                        desc.chars().take(max_desc_len - 3).collect::<String>()
+                    )
                 } else {
                     desc.clone()
                 };
-                format!("{:width$}  -  {}", task.name, truncated_desc, width = name_width)
+                format!(
+                    "{:width$}  -  {}",
+                    task.name,
+                    truncated_desc,
+                    width = name_width
+                )
             }
             _ => task.name.clone(),
         };

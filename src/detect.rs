@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 use crate::RtError;
 
-const RUNNER_CANDIDATES: [(&str, Runner); 15] = [
+const RUNNER_CANDIDATES: [(&str, Runner); 16] = [
     ("Justfile", Runner::Justfile),
     ("justfile", Runner::Justfile),
     ("Taskfile.yml", Runner::Taskfile),
@@ -15,6 +15,7 @@ const RUNNER_CANDIDATES: [(&str, Runner); 15] = [
     ("taskfile.dist.yaml", Runner::Taskfile),
     ("maskfile.md", Runner::Maskfile),
     ("Maskfile.md", Runner::Maskfile),
+    ("vite-task.json", Runner::ViteTask),
     ("mise.toml", Runner::Mise),
     ("Makefile.toml", Runner::CargoMake),
     ("Makefile", Runner::Makefile),
@@ -25,6 +26,7 @@ pub enum Runner {
     Justfile,
     Taskfile,
     Maskfile,
+    ViteTask,
     Mise,
     CargoMake,
     Makefile,
@@ -87,6 +89,7 @@ pub fn runner_command(runner: Runner) -> &'static str {
         Runner::Justfile => "just",
         Runner::Taskfile => "task",
         Runner::Maskfile => "mask",
+        Runner::ViteTask => "vt",
         Runner::Mise => "mise",
         // cargo-make is a subcommand of cargo, so we need to check cargo
         Runner::CargoMake => "cargo",
@@ -157,6 +160,7 @@ mod tests {
         assert_eq!(runner_command(Runner::Justfile), "just");
         assert_eq!(runner_command(Runner::Taskfile), "task");
         assert_eq!(runner_command(Runner::Maskfile), "mask");
+        assert_eq!(runner_command(Runner::ViteTask), "vt");
         assert_eq!(runner_command(Runner::Mise), "mise");
         assert_eq!(runner_command(Runner::CargoMake), "cargo");
         assert_eq!(runner_command(Runner::Makefile), "make");
@@ -168,6 +172,7 @@ mod tests {
         touch(dir.path(), "Makefile");
         touch(dir.path(), "Makefile.toml");
         touch(dir.path(), "mise.toml");
+        touch(dir.path(), "vite-task.json");
         touch(dir.path(), "maskfile.md");
         touch(dir.path(), "Taskfile.yml");
         touch(dir.path(), "justfile");
@@ -181,6 +186,7 @@ mod tests {
                 Runner::Justfile,
                 Runner::Taskfile,
                 Runner::Maskfile,
+                Runner::ViteTask,
                 Runner::Mise,
                 Runner::CargoMake,
                 Runner::Makefile,

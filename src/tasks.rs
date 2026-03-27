@@ -191,4 +191,9 @@ mod tests {
         assert!(exact.is_some());
         assert!(fuzzy.is_none());
     }
+
+    #[test]
+    fn list_command_variants_for_vite_plus_uses_run() {
+        assert_eq!(list_command_variants(Runner::VitePlus), vec![vec!["run"]]);
+    }
 }

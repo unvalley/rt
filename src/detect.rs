@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 use crate::RtError;
 
-const RUNNER_CANDIDATES: [(&str, Runner); 16] = [
+const RUNNER_CANDIDATES: [(&str, Runner); 21] = [
     ("Justfile", Runner::Justfile),
     ("justfile", Runner::Justfile),
     ("Taskfile.yml", Runner::Taskfile),
@@ -15,7 +15,12 @@ const RUNNER_CANDIDATES: [(&str, Runner); 16] = [
     ("taskfile.dist.yaml", Runner::Taskfile),
     ("maskfile.md", Runner::Maskfile),
     ("Maskfile.md", Runner::Maskfile),
-    ("vite-task.json", Runner::ViteTask),
+    ("vite.config.ts", Runner::VitePlus),
+    ("vite.config.mts", Runner::VitePlus),
+    ("vite.config.cts", Runner::VitePlus),
+    ("vite.config.js", Runner::VitePlus),
+    ("vite.config.mjs", Runner::VitePlus),
+    ("vite.config.cjs", Runner::VitePlus),
     ("mise.toml", Runner::Mise),
     ("Makefile.toml", Runner::CargoMake),
     ("Makefile", Runner::Makefile),
@@ -26,7 +31,7 @@ pub enum Runner {
     Justfile,
     Taskfile,
     Maskfile,
-    ViteTask,
+    VitePlus,
     Mise,
     CargoMake,
     Makefile,
@@ -89,7 +94,7 @@ pub fn runner_command(runner: Runner) -> &'static str {
         Runner::Justfile => "just",
         Runner::Taskfile => "task",
         Runner::Maskfile => "mask",
-        Runner::ViteTask => "vt",
+        Runner::VitePlus => "vp",
         Runner::Mise => "mise",
         // cargo-make is a subcommand of cargo, so we need to check cargo
         Runner::CargoMake => "cargo",
@@ -160,7 +165,7 @@ mod tests {
         assert_eq!(runner_command(Runner::Justfile), "just");
         assert_eq!(runner_command(Runner::Taskfile), "task");
         assert_eq!(runner_command(Runner::Maskfile), "mask");
-        assert_eq!(runner_command(Runner::ViteTask), "vt");
+        assert_eq!(runner_command(Runner::VitePlus), "vp");
         assert_eq!(runner_command(Runner::Mise), "mise");
         assert_eq!(runner_command(Runner::CargoMake), "cargo");
         assert_eq!(runner_command(Runner::Makefile), "make");
@@ -172,7 +177,7 @@ mod tests {
         touch(dir.path(), "Makefile");
         touch(dir.path(), "Makefile.toml");
         touch(dir.path(), "mise.toml");
-        touch(dir.path(), "vite-task.json");
+        touch(dir.path(), "vite.config.ts");
         touch(dir.path(), "maskfile.md");
         touch(dir.path(), "Taskfile.yml");
         touch(dir.path(), "justfile");
@@ -186,12 +191,24 @@ mod tests {
                 Runner::Justfile,
                 Runner::Taskfile,
                 Runner::Maskfile,
-                Runner::ViteTask,
+                Runner::VitePlus,
                 Runner::Mise,
                 Runner::CargoMake,
                 Runner::Makefile,
             ]
         );
+    }
+
+    #[test]
+    fn detect_runners_deduplicates_vite_plus_config_variants() {
+        let dir = tempdir().unwrap();
+        touch(dir.path(), "vite.config.ts");
+        touch(dir.path(), "vite.config.mjs");
+
+        let detections = detect_runners(dir.path()).unwrap();
+        let runners: Vec<Runner> = detections.into_iter().map(|d| d.runner).collect();
+
+        assert_eq!(runners, vec![Runner::VitePlus]);
     }
 
     #[test]

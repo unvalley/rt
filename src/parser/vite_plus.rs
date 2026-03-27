@@ -29,7 +29,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parse_vite_task_list() {
+    fn parse_vite_plus_task_list() {
         let output = "\
   check: echo check root
   app#build: echo build app
@@ -51,7 +51,7 @@ mod tests {
     }
 
     #[test]
-    fn parse_vite_task_ignores_blank_lines() {
+    fn parse_vite_plus_ignores_blank_lines() {
         let output = "\n\n  build: echo build\n";
         let tasks = parse(output);
         assert_eq!(tasks.len(), 1);

@@ -22,7 +22,7 @@ pub fn run(
     if runner == Runner::CargoMake {
         args.push("make".to_string());
     }
-    if runner == Runner::ViteTask {
+    if runner == Runner::VitePlus {
         args.push("run".to_string());
     }
     if runner == Runner::Mise {
@@ -73,7 +73,7 @@ pub fn base_command(runner: Runner) -> Result<Command, RtError> {
     if runner == Runner::CargoMake {
         command.arg("make");
     }
-    if runner == Runner::ViteTask {
+    if runner == Runner::VitePlus {
         command.arg("run");
     }
     Ok(command)
@@ -92,7 +92,7 @@ pub fn preview_command(runner: Runner, task: &str, passthrough: &[String]) -> St
     if runner == Runner::CargoMake {
         parts.push("make".to_string());
     }
-    if runner == Runner::ViteTask {
+    if runner == Runner::VitePlus {
         parts.push("run".to_string());
     }
     if runner == Runner::Mise {
@@ -182,8 +182,8 @@ mod tests {
             "mise run build"
         );
         assert_eq!(
-            preview_command(Runner::ViteTask, "build", &[]),
-            "vt run build"
+            preview_command(Runner::VitePlus, "build", &[]),
+            "vp run build"
         );
         assert_eq!(
             preview_command(Runner::CargoMake, "build", &[]),

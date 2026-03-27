@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 use crate::RtError;
 
-const RUNNER_CANDIDATES: [(&str, Runner); 21] = [
+const RUNNER_CANDIDATES: [(&str, Runner); 22] = [
     ("Justfile", Runner::Justfile),
     ("justfile", Runner::Justfile),
     ("Taskfile.yml", Runner::Taskfile),
@@ -21,6 +21,7 @@ const RUNNER_CANDIDATES: [(&str, Runner); 21] = [
     ("vite.config.js", Runner::VitePlus),
     ("vite.config.mjs", Runner::VitePlus),
     ("vite.config.cjs", Runner::VitePlus),
+    ("package.json", Runner::VitePlus),
     ("mise.toml", Runner::Mise),
     ("Makefile.toml", Runner::CargoMake),
     ("Makefile", Runner::Makefile),
@@ -47,7 +48,7 @@ pub struct Detection {
 pub fn detect_runner(dir_path: &Path) -> Result<Detection, RtError> {
     for (name, runner) in RUNNER_CANDIDATES {
         let path = dir_path.join(name);
-        if path.is_file() {
+        if candidate_matches(runner, &path) {
             return Ok(Detection {
                 runner,
                 runner_file: path,
@@ -70,7 +71,7 @@ pub fn detect_runners(dir_path: &Path) -> Result<Vec<Detection>, RtError> {
             continue;
         }
         let path = dir_path.join(name);
-        if path.is_file() {
+        if candidate_matches(runner, &path) {
             seen.insert(runner);
             detections.push(Detection {
                 runner,
@@ -86,6 +87,61 @@ pub fn detect_runners(dir_path: &Path) -> Result<Vec<Detection>, RtError> {
     } else {
         Ok(detections)
     }
+}
+
+fn candidate_matches(runner: Runner, path: &Path) -> bool {
+    if !path.is_file() {
+        return false;
+    }
+
+    match runner {
+        Runner::VitePlus => vite_plus_marker_matches(path),
+        _ => true,
+    }
+}
+
+fn vite_plus_marker_matches(path: &Path) -> bool {
+    match path.file_name().and_then(|name| name.to_str()) {
+        Some("package.json") => package_json_declares_vite_plus(path),
+        Some(name) if name.starts_with("vite.config.") => vite_config_declares_vite_plus(path),
+        _ => true,
+    }
+}
+
+fn vite_config_declares_vite_plus(path: &Path) -> bool {
+    std::fs::read_to_string(path)
+        .map(|content| content.contains("vite-plus"))
+        .unwrap_or(false)
+}
+
+fn package_json_declares_vite_plus(path: &Path) -> bool {
+    #[derive(serde::Deserialize)]
+    struct PackageJson {
+        #[serde(default)]
+        dependencies: std::collections::BTreeMap<String, serde_json::Value>,
+        #[serde(default, rename = "devDependencies")]
+        dev_dependencies: std::collections::BTreeMap<String, serde_json::Value>,
+        #[serde(default, rename = "peerDependencies")]
+        peer_dependencies: std::collections::BTreeMap<String, serde_json::Value>,
+        #[serde(default, rename = "optionalDependencies")]
+        optional_dependencies: std::collections::BTreeMap<String, serde_json::Value>,
+    }
+
+    let Ok(content) = std::fs::read_to_string(path) else {
+        return false;
+    };
+    let Ok(package_json) = serde_json::from_str::<PackageJson>(&content) else {
+        return false;
+    };
+
+    [
+        &package_json.dependencies,
+        &package_json.dev_dependencies,
+        &package_json.peer_dependencies,
+        &package_json.optional_dependencies,
+    ]
+    .into_iter()
+    .any(|deps| deps.contains_key("vite-plus"))
 }
 
 /// Returns the command name for the given runner.
@@ -110,6 +166,12 @@ mod tests {
     fn touch(dir: &Path, name: &str) -> PathBuf {
         let path = dir.join(name);
         std::fs::write(&path, b"").unwrap();
+        path
+    }
+
+    fn write(dir: &Path, name: &str, contents: &str) -> PathBuf {
+        let path = dir.join(name);
+        std::fs::write(&path, contents).unwrap();
         path
     }
 
@@ -161,6 +223,36 @@ mod tests {
     }
 
     #[test]
+    fn detect_ignores_plain_vite_config_without_vite_plus_marker() {
+        let dir = tempdir().unwrap();
+        write(
+            dir.path(),
+            "vite.config.ts",
+            "import { defineConfig } from 'vite'; export default defineConfig({});",
+        );
+
+        let err = detect_runner(dir.path()).unwrap_err();
+        match err {
+            RtError::NoRunnerFound { .. } => {}
+            other => panic!("unexpected error: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn detect_package_json_with_vite_plus_dependency() {
+        let dir = tempdir().unwrap();
+        let package_json = write(
+            dir.path(),
+            "package.json",
+            r#"{"devDependencies":{"vite-plus":"^1.0.0"}}"#,
+        );
+
+        let detection = detect_runner(dir.path()).unwrap();
+        assert_eq!(detection.runner, Runner::VitePlus);
+        assert_eq!(detection.runner_file, package_json);
+    }
+
+    #[test]
     fn runner_command_mapping() {
         assert_eq!(runner_command(Runner::Justfile), "just");
         assert_eq!(runner_command(Runner::Taskfile), "task");
@@ -177,7 +269,11 @@ mod tests {
         touch(dir.path(), "Makefile");
         touch(dir.path(), "Makefile.toml");
         touch(dir.path(), "mise.toml");
-        touch(dir.path(), "vite.config.ts");
+        write(
+            dir.path(),
+            "vite.config.ts",
+            "import { defineConfig } from 'vite-plus'; export default defineConfig({});",
+        );
         touch(dir.path(), "maskfile.md");
         touch(dir.path(), "Taskfile.yml");
         touch(dir.path(), "justfile");
@@ -202,8 +298,16 @@ mod tests {
     #[test]
     fn detect_runners_deduplicates_vite_plus_config_variants() {
         let dir = tempdir().unwrap();
-        touch(dir.path(), "vite.config.ts");
-        touch(dir.path(), "vite.config.mjs");
+        write(
+            dir.path(),
+            "vite.config.ts",
+            "import { defineConfig } from 'vite-plus'; export default defineConfig({});",
+        );
+        write(
+            dir.path(),
+            "vite.config.mjs",
+            "import { defineConfig } from 'vite-plus'; export default defineConfig({});",
+        );
 
         let detections = detect_runners(dir.path()).unwrap();
         let runners: Vec<Runner> = detections.into_iter().map(|d| d.runner).collect();

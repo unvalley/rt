@@ -20,15 +20,15 @@ pkg-fmt = "tgz"
 disabled-strategies = ["quick-install", "compile"]
 
 [dependencies]
-bpaf = { version = "0.9.20", features = ["derive", "dull-color"] }
-thiserror = "2.0.17"
-which = "8.0.0"
-inquire = "0.9.1"
+bpaf = { version = "0.9.24", features = ["derive", "dull-color"] }
+thiserror = "2.0.18"
+which = "8.0.2"
+inquire = "0.9.4"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"
 fs2 = "0.4.3"
-time = { version = "0.3.44", features = ["formatting", "local-offset", "parsing"] }
+time = { version = "0.3.47", features = ["formatting", "local-offset", "parsing"] }
 terminal_size = "0.4"
 
 [dev-dependencies]
-tempfile = "3.24.0"
+tempfile = "3.27.0"

@@ -18,13 +18,7 @@ pub fn run(
     cwd: &Path,
 ) -> Result<RunResult, RtError> {
     let program = runner_command(runner).to_string();
-    let mut args = Vec::new();
-    if runner == Runner::CargoMake {
-        args.push("make".to_string());
-    }
-    if runner == Runner::Mise {
-        args.push("run".to_string());
-    }
+    let mut args = runner_prefix_args(runner);
     args.push(task.to_string());
     args.extend(passthrough.iter().cloned());
 
@@ -67,8 +61,8 @@ pub fn base_command(runner: Runner) -> Result<Command, RtError> {
     let program = runner_command(runner);
     ensure_tool(program)?;
     let mut command = Command::new(program);
-    if runner == Runner::CargoMake {
-        command.arg("make");
+    for arg in runner_prefix_args(runner) {
+        command.arg(arg);
     }
     Ok(command)
 }
@@ -81,18 +75,20 @@ pub fn ensure_tool(tool: &'static str) -> Result<(), RtError> {
 }
 
 pub fn preview_command(runner: Runner, task: &str, passthrough: &[String]) -> String {
-    let mut parts = Vec::new();
     let program = runner_command(runner);
-    if runner == Runner::CargoMake {
-        parts.push("make".to_string());
-    }
-    if runner == Runner::Mise {
-        parts.push("run".to_string());
-    }
+    let mut parts = runner_prefix_args(runner);
     parts.push(task.to_string());
     parts.extend(passthrough.iter().cloned());
 
     format_program_args(program, &parts)
+}
+
+fn runner_prefix_args(runner: Runner) -> Vec<String> {
+    match runner {
+        Runner::CargoMake => vec!["make".to_string()],
+        Runner::VitePlus | Runner::Mise => vec!["run".to_string()],
+        _ => Vec::new(),
+    }
 }
 
 pub fn format_program_args(program: &str, args: &[String]) -> String {
@@ -138,6 +134,24 @@ mod tests {
     }
 
     #[test]
+    fn runner_prefix_args_include_vite_plus_run_subcommand() {
+        assert_eq!(
+            runner_prefix_args(Runner::VitePlus),
+            vec!["run".to_string()]
+        );
+    }
+
+    #[test]
+    fn runner_prefix_args_include_runner_specific_prefixes() {
+        assert_eq!(
+            runner_prefix_args(Runner::CargoMake),
+            vec!["make".to_string()]
+        );
+        assert_eq!(runner_prefix_args(Runner::Mise), vec!["run".to_string()]);
+        assert!(runner_prefix_args(Runner::Justfile).is_empty());
+    }
+
+    #[test]
     fn ensure_tool_returns_error_for_missing_binary() {
         let err = ensure_tool("__rt_missing_tool_for_test__").unwrap_err();
         match err {
@@ -171,6 +185,10 @@ mod tests {
         assert_eq!(
             preview_command(Runner::Mise, "build", &[]),
             "mise run build"
+        );
+        assert_eq!(
+            preview_command(Runner::VitePlus, "build", &[]),
+            "vp run build"
         );
         assert_eq!(
             preview_command(Runner::CargoMake, "build", &[]),

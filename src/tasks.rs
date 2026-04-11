@@ -166,6 +166,7 @@ fn list_command_variants(runner: Runner) -> Vec<Vec<&'static str>> {
         Runner::Justfile => vec![vec!["--list", "--unsorted"]],
         Runner::Taskfile => vec![vec!["--list-all"]],
         Runner::Maskfile => vec![vec!["--introspect"]],
+        Runner::VitePlus => vec![vec!["run"]],
         Runner::Mise => vec![vec!["tasks", "ls", "--json"]],
         Runner::CargoMake => vec![
             vec!["make", "--list-all-steps"],
@@ -213,5 +214,10 @@ mod tests {
 
         assert!(exact.is_some());
         assert!(fuzzy.is_none());
+    }
+
+    #[test]
+    fn list_command_variants_for_vite_plus_uses_run() {
+        assert_eq!(list_command_variants(Runner::VitePlus), vec![vec!["run"]]);
     }
 }

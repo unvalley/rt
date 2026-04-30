@@ -20,7 +20,7 @@ pkg-fmt = "tgz"
 disabled-strategies = ["quick-install", "compile"]
 
 [dependencies]
-bpaf = { version = "0.9.24", features = ["derive", "dull-color"] }
+bpaf = { version = "0.9.25", features = ["derive", "dull-color"] }
 thiserror = "2.0.18"
 which = "8.0.2"
 inquire = "0.9.4"

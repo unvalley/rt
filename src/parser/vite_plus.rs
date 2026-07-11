@@ -9,7 +9,7 @@ pub(super) fn parse(output: &str) -> Vec<TaskItem> {
                 return None;
             }
 
-            let (name, description) = line.split_once(':')?;
+            let (name, description) = line.split_once(": ")?;
             let name = name.trim();
             if name.is_empty() {
                 return None;
@@ -56,5 +56,19 @@ mod tests {
         let tasks = parse(output);
         assert_eq!(tasks.len(), 1);
         assert_eq!(tasks[0].name, "build");
+    }
+
+    #[test]
+    fn parse_vite_plus_preserves_colons_in_task_names() {
+        let output = "  generate:icons: node scripts/generate-icons.js\n";
+        let tasks = parse(output);
+
+        assert_eq!(
+            tasks,
+            vec![TaskItem {
+                name: "generate:icons".to_string(),
+                description: Some("node scripts/generate-icons.js".to_string()),
+            }]
+        );
     }
 }

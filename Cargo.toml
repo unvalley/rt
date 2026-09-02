@@ -2,6 +2,7 @@
 name = "rt-cli"
 version = "0.1.9"
 edition = "2024"
+rust-version = "1.85"
 description = "rt is a CLI tools for running task files correctly."
 repository = "https://github.com/unvalley/rt"
 license = "MIT"

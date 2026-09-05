@@ -7,6 +7,7 @@ mod makefile;
 mod mask;
 mod mise;
 mod taskfile;
+mod vite_plus;
 
 /// Returns parsed tasks from the output of the given runner's list command.
 pub fn parse_tasks(runner: Runner, output: &str) -> Vec<TaskItem> {
@@ -14,6 +15,7 @@ pub fn parse_tasks(runner: Runner, output: &str) -> Vec<TaskItem> {
         Runner::Justfile => justfile::parse(output),
         Runner::Taskfile => taskfile::parse(output),
         Runner::Maskfile => mask::parse(output),
+        Runner::VitePlus => vite_plus::parse(output),
         Runner::Mise => mise::parse(output),
         Runner::CargoMake => cargo_make::parse(output),
         Runner::Makefile => makefile::parse(output),
